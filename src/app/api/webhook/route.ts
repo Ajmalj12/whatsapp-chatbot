@@ -69,7 +69,7 @@ export async function POST(req: Request) {
                     },
                 });
                 const welcome = lang === 'english' ? "Welcome to ABC Hospital 👋\nHow can we help you today?" : "ABC ആശുപത്രിയിലേക്ക് സ്വാഗതം 👋\nഎങ്ങനെ സഹായിക്കാം?";
-                await sendWhatsAppButtons(from, welcome, ["Book Appointment", "Contact Hospital", "Location"]);
+                await sendWhatsAppButtons(from, welcome, ["Book Appointment"]);
                 break;
 
             case 'MAIN_MENU':
