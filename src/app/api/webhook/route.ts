@@ -32,21 +32,15 @@ export async function POST(req: Request) {
 
         // 1. GLOBAL RESET: Allow starting over at any time
         const cleanText = text.toLowerCase().trim();
-        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart'].includes(cleanText)) {
+        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText)) {
             console.log(`[Webhook] Global reset triggered for ${from}`);
-            if (!session) {
-                session = await prisma.session.create({
-                    data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
-                });
-                await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
-            } else {
-                await prisma.session.update({
-                    where: { phone: from },
-                    data: { currentStep: 'MAIN_MENU', data: '{}' },
-                });
-                const welcome = session.language === 'malayalam' ? "എങ്ങനെ സഹായിക്കാം?" : "Welcome back! How can we help you today?";
-                await sendWhatsAppButtons(from, welcome, ["Book Appointment", "Contact Hospital", "Location"]);
+            if (session) {
+                await prisma.session.delete({ where: { phone: from } });
             }
+            session = await prisma.session.create({
+                data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
+            });
+            await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
             return NextResponse.json({ status: 'ok' });
         }
 
@@ -58,11 +52,11 @@ export async function POST(req: Request) {
                     currentStep: 'LANGUAGE_SELECTION',
                 },
             });
-            await sendWhatsAppButtons(from, "Please select your language 👇", ["English", "മലയാളം"]);
+            await sendWhatsAppButtons(from, "Welcome! Please select your language 👇", ["English", "മലയാളം"]);
             return NextResponse.json({ status: 'ok' });
         }
 
-        const currentData = JSON.parse(session.data);
+        const currentData = JSON.parse(session.data || '{}');
 
         switch (session.currentStep) {
             case 'LANGUAGE_SELECTION':
@@ -117,7 +111,7 @@ export async function POST(req: Request) {
                     }
 
                     // Get unique dates
-                    const uniqueDates = Array.from(new Set(slots.map(s =>
+                    const uniqueDates: string[] = Array.from(new Set<string>(slots.map((s: any) =>
                         new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
                     ))).slice(0, 3); // Max 3 buttons
 
@@ -153,7 +147,7 @@ export async function POST(req: Request) {
                 });
 
                 // Filter slots that match the selected date string
-                const filteredSlots = availableSlots.filter(s =>
+                const filteredSlots = availableSlots.filter((s: any) =>
                     new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) === selectedDate
                 ).slice(0, 3);
 
@@ -187,7 +181,7 @@ export async function POST(req: Request) {
                     orderBy: { startTime: 'asc' }
                 });
 
-                const daySlots = allSlots.filter(s =>
+                const daySlots = allSlots.filter((s: any) =>
                     new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) === sDate
                 ).slice(0, 3);
 
