@@ -74,9 +74,25 @@ export async function POST(req: Request) {
                 });
                 if (selectedDoctor) {
                     const slots = await prisma.availability.findMany({
-                        where: { doctorId: selectedDoctor.id, isBooked: false, startTime: { gte: new Date() } },
+                        where: {
+                            doctorId: selectedDoctor.id,
+                            isBooked: false,
+                            startTime: { gte: new Date() }
+                        },
+                        orderBy: { startTime: 'asc' },
                         take: 5
                     });
+
+                    if (slots.length === 0) {
+                        await sendWhatsAppMessage(from, `Sorry, ${selectedDoctor.name} has no available slots at the moment. Please try another doctor or check back later.`);
+                        await sendWhatsAppButtons(from, "How else can we help you?", ["Book Appointment", "Contact Hospital", "Location"]);
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: { currentStep: 'MAIN_MENU' }
+                        });
+                        return NextResponse.json({ status: 'ok' });
+                    }
+
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
@@ -84,7 +100,7 @@ export async function POST(req: Request) {
                             data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id })
                         },
                     });
-                    const slotList = slots.map((s: any, i: number) => `${i + 1}️⃣ ${new Date(s.startTime).toLocaleString()}`).join('\n');
+                    const slotList = slots.map((s: any, i: number) => `${i + 1}️⃣ ${new Date(s.startTime).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`).join('\n');
                     await sendWhatsAppButtons(from, `${selectedDoctor.name} is available on:\n\n${slotList}\n\nSelect a time slot 👇`, slots.map((s: any, i: number) => `Slot ${i + 1}`));
                 }
                 break;
