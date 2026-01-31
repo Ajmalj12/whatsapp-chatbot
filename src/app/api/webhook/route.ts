@@ -105,7 +105,6 @@ export async function POST(req: Request) {
                             startTime: { gte: new Date() }
                         },
                         orderBy: { startTime: 'asc' },
-                        take: 5
                     });
 
                     if (slots.length === 0) {
@@ -117,15 +116,20 @@ export async function POST(req: Request) {
                         return NextResponse.json({ status: 'ok' });
                     }
 
+                    // Get unique dates
+                    const uniqueDates = Array.from(new Set(slots.map(s =>
+                        new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                    ))).slice(0, 3); // Max 3 buttons
+
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
-                            currentStep: 'AVAILABILITY_SELECTION',
+                            currentStep: 'DATE_SELECTION',
                             data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id })
                         },
                     });
-                    const slotList = slots.map((s: any, i: number) => `${i + 1}️⃣ ${new Date(s.startTime).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`).join('\n');
-                    await sendWhatsAppButtons(from, `${selectedDoctor.name} is available on:\n\n${slotList}\n\nSelect a time slot 👇`, slots.map((s: any, i: number) => `Slot ${i + 1}`));
+
+                    await sendWhatsAppButtons(from, `Great! Please select a date for your appointment with ${selectedDoctor.name} 👇`, uniqueDates);
                 } else {
                     console.log(`[Webhook] No doctor matched "${text}". Resending list.`);
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
@@ -134,15 +138,62 @@ export async function POST(req: Request) {
                 }
                 break;
 
-            case 'AVAILABILITY_SELECTION':
-                const doctorId = currentData.doctorId;
-                const slotsForSelection = await prisma.availability.findMany({
-                    where: { doctorId, isBooked: false },
-                    take: 5
+            case 'DATE_SELECTION':
+                const selectedDate = text;
+                const dId = currentData.doctorId;
+                console.log(`[Webhook] Date selected: ${selectedDate} for Dr ID: ${dId}`);
+
+                const availableSlots = await prisma.availability.findMany({
+                    where: {
+                        doctorId: dId,
+                        isBooked: false,
+                        startTime: { gte: new Date() }
+                    },
+                    orderBy: { startTime: 'asc' }
                 });
-                const slotIndex = parseInt(text.replace('Slot ', '')) - 1;
-                if (!isNaN(slotIndex) && slotsForSelection[slotIndex]) {
-                    const selectedSlot = slotsForSelection[slotIndex];
+
+                // Filter slots that match the selected date string
+                const filteredSlots = availableSlots.filter(s =>
+                    new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) === selectedDate
+                ).slice(0, 3);
+
+                if (filteredSlots.length === 0) {
+                    await sendWhatsAppMessage(from, "Sorry, no slots available for that date. Please choose another date.");
+                    // Reprompt dates logic here if needed, or redirect to doctor selection
+                    return NextResponse.json({ status: 'ok' });
+                }
+
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: {
+                        currentStep: 'AVAILABILITY_SELECTION',
+                        data: JSON.stringify({ ...currentData, selectedDate })
+                    },
+                });
+
+                const slotList = filteredSlots.map((s: any, i: number) =>
+                    `${i + 1}️⃣ ${new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                ).join('\n');
+
+                await sendWhatsAppButtons(from, `Available slots on ${selectedDate}:\n\n${slotList}\n\nSelect a time slot 👇`, filteredSlots.map((s: any, i: number) => `Slot ${i + 1}`));
+                break;
+
+            case 'AVAILABILITY_SELECTION':
+                const docId = currentData.doctorId;
+                const sDate = currentData.selectedDate;
+
+                const allSlots = await prisma.availability.findMany({
+                    where: { doctorId: docId, isBooked: false, startTime: { gte: new Date() } },
+                    orderBy: { startTime: 'asc' }
+                });
+
+                const daySlots = allSlots.filter(s =>
+                    new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) === sDate
+                ).slice(0, 3);
+
+                const slotIdx = parseInt(text.replace('Slot ', '')) - 1;
+                if (!isNaN(slotIdx) && daySlots[slotIdx]) {
+                    const selectedSlot = daySlots[slotIdx];
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
