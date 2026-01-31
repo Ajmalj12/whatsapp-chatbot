@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Doctor {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  department   String
+  active       Boolean        @default(true)
+  availability Availability[]
+  appointments Appointment[]
+}
+
+model Availability {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  doctorId     String        @db.ObjectId
+  doctor       Doctor        @relation(fields: [doctorId], references: [id])
+  startTime    DateTime
+  endTime      DateTime
+  isBooked     Boolean       @default(false)
+  appointment  Appointment?
+}
+
+model Appointment {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  doctorId       String       @db.ObjectId
+  doctor         Doctor       @relation(fields: [doctorId], references: [id])
+  availabilityId String       @unique @db.ObjectId
+  availability   Availability @relation(fields: [availabilityId], references: [id])
+  patientName    String
+  patientAge     String
+  patientPhone   String
+  reason         String?
+  status         String       @default("Booked") // Booked, Cancelled
+  createdAt      DateTime     @default(now())
+}
+
+model Session {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  phone       String   @unique
+  language    String?
+  currentStep String   @default("START")
+  data        String   @default("{}") // JSON stringified data
+  updatedAt   DateTime @updatedAt
+}

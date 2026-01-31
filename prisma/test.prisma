@@ -1,0 +1,12 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = "mongodb://localhost:27017/test"
+}
+
+model Test {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+}
