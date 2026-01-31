@@ -38,8 +38,8 @@ export default function AvailabilityPage() {
                 availRes.json(),
                 docRes.json()
             ]);
-            setAvailabilities(availData);
-            setDoctors(docData);
+            setAvailabilities(Array.isArray(availData) ? availData : []);
+            setDoctors(Array.isArray(docData) ? docData : []);
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {

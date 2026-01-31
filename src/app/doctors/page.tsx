@@ -24,7 +24,7 @@ export default function DoctorsPage() {
         try {
             const res = await fetch('/api/doctors');
             const data = await res.json();
-            setDoctors(data);
+            setDoctors(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Error fetching doctors:', error);
         } finally {
