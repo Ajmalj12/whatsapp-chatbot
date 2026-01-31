@@ -5,14 +5,18 @@ import { sendWhatsAppMessage, sendWhatsAppButtons } from '@/lib/whatsapp';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
+        console.log('--- Incoming WhatsApp Webhook ---');
+        console.log(JSON.stringify(body, null, 2));
 
         // Check if it's a valid WhatsApp message
         if (!body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
+            console.log('No message found in webhook body');
             return NextResponse.json({ status: 'ignored' });
         }
 
         const message = body.entry[0].changes[0].value.messages[0];
         const from = message.from; // Sender's phone number
+        console.log(`Message from: ${from}`);
 
         let text = "";
         if (message.type === 'text') {

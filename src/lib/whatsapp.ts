@@ -9,6 +9,7 @@ export async function sendWhatsAppMessage(to: string, text: string) {
         text: { body: text }
     };
 
+    console.log(`Sending WhatsApp message to ${to}: ${text}`);
     try {
         const response = await fetch(url, {
             method: "POST",
@@ -20,6 +21,7 @@ export async function sendWhatsAppMessage(to: string, text: string) {
         });
 
         const result = await response.json();
+        console.log("WhatsApp API Response:", JSON.stringify(result, null, 2));
         if (!response.ok) {
             console.error("WhatsApp API Error:", result);
         }
@@ -32,6 +34,7 @@ export async function sendWhatsAppMessage(to: string, text: string) {
 
 export async function sendWhatsAppButtons(to: string, text: string, buttons: string[]) {
     const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    console.log(`Sending WhatsApp buttons to ${to}: ${text}`);
 
     // WhatsApp Cloud API interactive buttons format
     const payload = {
@@ -65,6 +68,7 @@ export async function sendWhatsAppButtons(to: string, text: string, buttons: str
         });
 
         const result = await response.json();
+        console.log("WhatsApp Buttons API Response:", JSON.stringify(result, null, 2));
         if (!response.ok) {
             console.error("WhatsApp API Error (Buttons):", result);
         }
