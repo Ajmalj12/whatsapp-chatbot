@@ -16,20 +16,42 @@ export async function POST(req: Request) {
 
         const message = body.entry[0].changes[0].value.messages[0];
         const from = message.from; // Sender's phone number
-        console.log(`Message from: ${from}`);
+        console.log(`[Webhook] Message from: ${from}`);
 
         let text = "";
         if (message.type === 'text') {
             text = message.text.body;
         } else if (message.type === 'interactive') {
-            text = message.interactive.button_reply.title;
+            text = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
         }
+        console.log(`[Webhook] Extracted Text: "${text}"`);
 
         let session = await prisma.session.findUnique({
             where: { phone: from },
         });
 
+        // 1. GLOBAL RESET: Allow starting over at any time
+        const cleanText = text.toLowerCase().trim();
+        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart'].includes(cleanText)) {
+            console.log(`[Webhook] Global reset triggered for ${from}`);
+            if (!session) {
+                session = await prisma.session.create({
+                    data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
+                });
+                await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
+            } else {
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: { currentStep: 'MAIN_MENU', data: '{}' },
+                });
+                const welcome = session.language === 'malayalam' ? "എങ്ങനെ സഹായിക്കാം?" : "Welcome back! How can we help you today?";
+                await sendWhatsAppButtons(from, welcome, ["Book Appointment", "Contact Hospital", "Location"]);
+            }
+            return NextResponse.json({ status: 'ok' });
+        }
+
         if (!session) {
+            console.log(`[Webhook] New session for ${from}`);
             session = await prisma.session.create({
                 data: {
                     phone: from,
@@ -69,10 +91,13 @@ export async function POST(req: Request) {
                 break;
 
             case 'DOCTOR_SELECTION':
+                console.log(`[Webhook] Searching for doctor matching: "${text}"`);
                 const selectedDoctor = await prisma.doctor.findFirst({
-                    where: { name: { contains: text } }
+                    where: { name: { contains: text, mode: 'insensitive' } }
                 });
+
                 if (selectedDoctor) {
+                    console.log(`[Webhook] Found doctor: ${selectedDoctor.name}`);
                     const slots = await prisma.availability.findMany({
                         where: {
                             doctorId: selectedDoctor.id,
@@ -84,12 +109,11 @@ export async function POST(req: Request) {
                     });
 
                     if (slots.length === 0) {
+                        console.log(`[Webhook] No slots for ${selectedDoctor.name}`);
                         await sendWhatsAppMessage(from, `Sorry, ${selectedDoctor.name} has no available slots at the moment. Please try another doctor or check back later.`);
-                        await sendWhatsAppButtons(from, "How else can we help you?", ["Book Appointment", "Contact Hospital", "Location"]);
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'MAIN_MENU' }
-                        });
+                        const doctors = await prisma.doctor.findMany({ where: { active: true } });
+                        const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
+                        await sendWhatsAppButtons(from, `Please choose another doctor 👇\n\n${doctorList}`, doctors.map((d: any) => d.name));
                         return NextResponse.json({ status: 'ok' });
                     }
 
@@ -102,6 +126,11 @@ export async function POST(req: Request) {
                     });
                     const slotList = slots.map((s: any, i: number) => `${i + 1}️⃣ ${new Date(s.startTime).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`).join('\n');
                     await sendWhatsAppButtons(from, `${selectedDoctor.name} is available on:\n\n${slotList}\n\nSelect a time slot 👇`, slots.map((s: any, i: number) => `Slot ${i + 1}`));
+                } else {
+                    console.log(`[Webhook] No doctor matched "${text}". Resending list.`);
+                    const doctors = await prisma.doctor.findMany({ where: { active: true } });
+                    const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
+                    await sendWhatsAppButtons(from, `I couldn't find that doctor. Please choose from the list 👇\n\n${doctorList}`, doctors.map((d: any) => d.name));
                 }
                 break;
 
