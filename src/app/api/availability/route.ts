@@ -10,7 +10,11 @@ export async function GET() {
         });
         return NextResponse.json(availability);
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 });
+        console.error('Prisma Fetch Error (Availability):', error);
+        return NextResponse.json({
+            error: 'Failed to fetch availability',
+            details: error instanceof Error ? error.message : String(error)
+        }, { status: 500 });
     }
 }
 

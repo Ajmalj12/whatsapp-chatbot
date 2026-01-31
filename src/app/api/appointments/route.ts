@@ -14,7 +14,11 @@ export async function GET() {
         });
         return NextResponse.json(appointments);
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch appointments' }, { status: 500 });
+        console.error('Prisma Fetch Error (Appointments):', error);
+        return NextResponse.json({
+            error: 'Failed to fetch appointments',
+            details: error instanceof Error ? error.message : String(error)
+        }, { status: 500 });
     }
 }
 

@@ -10,7 +10,11 @@ export async function GET() {
         });
         return NextResponse.json(doctors);
     } catch (error) {
-        return NextResponse.json({ error: 'Failed to fetch doctors' }, { status: 500 });
+        console.error('Prisma Fetch Error (Doctors):', error);
+        return NextResponse.json({
+            error: 'Failed to fetch doctors',
+            details: error instanceof Error ? error.message : String(error)
+        }, { status: 500 });
     }
 }
 
