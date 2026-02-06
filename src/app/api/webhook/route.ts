@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendWhatsAppMessage, sendWhatsAppButtons } from '@/lib/whatsapp';
+import { getAIResponse } from '@/lib/groq';
 
 export async function POST(req: Request) {
     try {
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
                     },
                 });
                 const welcome = lang === 'english' ? "Welcome to ABC Hospital 👋\nHow can we help you today?" : "ABC ആശുപത്രിയിലേക്ക് സ്വാഗതം 👋\nഎങ്ങനെ സഹായിക്കാം?";
-                await sendWhatsAppButtons(from, welcome, ["Book Appointment"]);
+                await sendWhatsAppButtons(from, welcome, ["Book Appointment", "Need to know more"]);
                 break;
 
             case 'MAIN_MENU':
@@ -81,6 +82,35 @@ export async function POST(req: Request) {
                     });
                     const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
                     await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, doctors.map((d: any) => d.name));
+                } else if (text.includes('know more') || text.includes('Need')) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'KNOWLEDGE_QUERY' },
+                    });
+                    await sendWhatsAppMessage(from, "Sure! What would you like to know? (e.g. Opening hours, Specialists, etc.)");
+                } else {
+                    await sendWhatsAppButtons(from, "Please select an option 👇", ["Book Appointment", "Need to know more"]);
+                }
+                break;
+
+            case 'KNOWLEDGE_QUERY':
+                if (text.toLowerCase().includes('book') || text.toLowerCase().includes('appointment')) {
+                    // Transition to booking
+                    const doctors = await prisma.doctor.findMany({ where: { active: true } });
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'DOCTOR_SELECTION' },
+                    });
+                    const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
+                    await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, doctors.map((d: any) => d.name));
+                } else {
+                    // AI Reply
+                    const knowledgeItems = await prisma.knowledgeBase.findMany({});
+                    const context = knowledgeItems.map((k: any) => `Q: ${k.question}\nA: ${k.answer}`);
+
+                    const aiReply = await getAIResponse(text, context);
+
+                    await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
                 }
                 break;
 
