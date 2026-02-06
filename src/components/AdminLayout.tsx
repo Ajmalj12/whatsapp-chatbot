@@ -20,6 +20,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                 <a href="/doctors" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Doctors</a>
                                 <a href="/availability" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Availability</a>
                                 <a href="/appointments" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Appointments</a>
+                                <a href="/knowledge" className="text-sm font-medium text-emerald-600 font-bold hover:text-emerald-700 transition-colors flex items-center gap-1">
+                                    <span className="text-base">🧠</span>
+                                    Knowledge Base
+                                </a>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">

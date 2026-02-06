@@ -44,6 +44,11 @@ export default function Home() {
                 <span className="font-semibold text-slate-900">Update Slots</span>
                 <span className="text-xs text-slate-500">Change today's availability</span>
               </button>
+              <a href="/knowledge" className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-left transition-all hover:bg-blue-50 hover:border-blue-100 group sm:col-span-2">
+                <span className="text-lg text-blue-600 group-hover:scale-110 transition-transform">🧠</span>
+                <span className="font-semibold text-slate-900">Knowledge Base</span>
+                <span className="text-xs text-slate-500">Manage AI training data & FAQs</span>
+              </a>
             </div>
           </div>
 
