@@ -57,8 +57,7 @@ export async function POST() {
 
         // Create all slots in bulk
         const result = await prisma.availability.createMany({
-            data: slotsToCreate,
-            skipDuplicates: true
+            data: slotsToCreate
         });
 
         return NextResponse.json({

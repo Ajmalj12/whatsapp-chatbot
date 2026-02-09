@@ -15,8 +15,7 @@ export async function POST() {
         ];
 
         const result = await prisma.department.createMany({
-            data: departments,
-            skipDuplicates: true
+            data: departments
         });
 
         return NextResponse.json({
