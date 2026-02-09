@@ -666,6 +666,12 @@ export async function POST(req: Request) {
             }
 
             case 'COLLECT_NAME': {
+                // Guard: Ignore interactive replies (like double-delivered button clicks from previous step)
+                if (interactiveId || text.length < 2) {
+                    console.log("[Webhook] Ignoring interactive/short input in COLLECT_NAME");
+                    return NextResponse.json({ status: 'ok' });
+                }
+
                 await prisma.session.update({
                     where: { phone: from },
                     data: {
@@ -678,6 +684,10 @@ export async function POST(req: Request) {
             }
 
             case 'COLLECT_AGE': {
+                // Guard: Ignore interactive replies
+                if (interactiveId) {
+                    return NextResponse.json({ status: 'ok' });
+                }
                 const finalAgeData = { ...currentData, patientAge: text };
                 const doc = await prisma.doctor.findUnique({ where: { id: finalAgeData.doctorId } });
                 const slot = await prisma.availability.findUnique({ where: { id: finalAgeData.availabilityId } });
