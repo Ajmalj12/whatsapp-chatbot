@@ -1,7 +1,6 @@
 
 import Groq from 'groq-sdk';
 import prisma from './prisma';
-import { findNextAvailableSlot } from './slotMatcher';
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -37,7 +36,7 @@ async function getDynamicContext(): Promise<string[]> {
                         startTime: { gte: new Date() }
                     },
                     orderBy: { startTime: 'asc' },
-                    take: 1
+                    take: 5
                 }
             }
         });
@@ -51,18 +50,21 @@ async function getDynamicContext(): Promise<string[]> {
             doctorsByDept[doctor.department].push(doctor);
         }
 
-        // Add department-wise doctor info
+        // Add department-wise doctor info with detailed slots
         for (const [dept, deptDoctors] of Object.entries(doctorsByDept)) {
-            const nextSlot = await findNextAvailableSlot(deptDoctors[0].id);
-            const doctorNames = deptDoctors.map(d => d.name).join(', ');
-            const availableCount = deptDoctors.filter(d => d.availability.length > 0).length;
+            let deptInfo = `${dept} Department:\n`;
 
-            contexts.push(
-                `${dept} Department:\n` +
-                `Doctors: ${doctorNames}\n` +
-                `Available today: ${availableCount} doctor(s)\n` +
-                `Next available slot: ${nextSlot ? nextSlot.time : 'No slots available'}`
-            );
+            deptDoctors.forEach(doc => {
+                const slots = doc.availability.map((s: any) =>
+                    s.startTime.toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                    })
+                ).join(', ');
+
+                deptInfo += `- Dr. ${doc.name}: ${slots ? slots : 'No slots'}\n`;
+            });
+
+            contexts.push(deptInfo);
         }
 
         // 3. Static knowledge base
