@@ -77,7 +77,7 @@ export async function POST(req: Request) {
             }
 
             case 'MAIN_MENU': {
-                if (text.includes('Book')) {
+                if (text.includes('Book') || text.toLowerCase().includes('doctor') || text.toLowerCase().includes('find')) {
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
                     await prisma.session.update({
                         where: { phone: from },
@@ -331,7 +331,18 @@ export async function POST(req: Request) {
                         },
                     });
 
-                    await sendWhatsAppButtons(from, `Please select a date for your appointment with ${doctorName} 👇`, uniqueDates);
+                    await sendWhatsAppList(
+                        from,
+                        `Please select a date for your appointment with ${doctorName} 👇`,
+                        "Select Date",
+                        [{
+                            title: "Available Dates",
+                            rows: uniqueDates.map((date, idx) => ({
+                                id: `date_${idx}`,
+                                title: date
+                            }))
+                        }]
+                    );
                 } else {
                     // Parse natural language time
                     const parsedTime = parseNaturalTime(text);
