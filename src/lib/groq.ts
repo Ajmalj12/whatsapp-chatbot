@@ -36,7 +36,7 @@ async function getDynamicContext(): Promise<string[]> {
                         startTime: { gte: new Date() }
                     },
                     orderBy: { startTime: 'asc' },
-                    take: 5
+                    take: 20
                 }
             }
         });
@@ -55,13 +55,19 @@ async function getDynamicContext(): Promise<string[]> {
             let deptInfo = `${dept} Department:\n`;
 
             deptDoctors.forEach(doc => {
-                const slots = doc.availability.map((s: any) =>
-                    s.startTime.toLocaleString('en-US', {
-                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-                    })
-                ).join(', ');
+                const slotsByDate: { [key: string]: string[] } = {};
+                doc.availability.forEach((s: any) => {
+                    const dateKey = s.startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const timeStr = s.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    if (!slotsByDate[dateKey]) slotsByDate[dateKey] = [];
+                    slotsByDate[dateKey].push(timeStr);
+                });
 
-                deptInfo += `- Dr. ${doc.name}: ${slots ? slots : 'No slots'}\n`;
+                const formattedSlots = Object.entries(slotsByDate)
+                    .map(([date, times]) => `${date} [${times.join(', ')}]`)
+                    .join('; ');
+
+                deptInfo += `- Dr. ${doc.name}: ${formattedSlots ? formattedSlots : 'No upcoming slots'}\n`;
             });
 
             contexts.push(deptInfo);
