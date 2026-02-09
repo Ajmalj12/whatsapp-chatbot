@@ -21,6 +21,7 @@ export default function AvailabilityPage() {
     const [availabilities, setAvailabilities] = useState<Availability[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(true);
+    const [seeding, setSeeding] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newSlot, setNewSlot] = useState({ doctorId: '', date: '', startTime: '', endTime: '' });
 
@@ -72,6 +73,32 @@ export default function AvailabilityPage() {
         }
     };
 
+    const handleSeedSlots = async () => {
+        if (!confirm('This will create availability slots for all active doctors for the next 3 days (9 AM-12 PM, 2 PM-5 PM). Continue?')) {
+            return;
+        }
+
+        setSeeding(true);
+        try {
+            const res = await fetch('/api/availability/seed', {
+                method: 'POST',
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert(`✅ Success! Created ${data.slotsCreated} slots for ${data.doctorsCount} doctor(s) across ${data.daysCount} days.`);
+                fetchData();
+            } else {
+                alert(`❌ Error: ${data.error || 'Failed to seed slots'}`);
+            }
+        } catch (error) {
+            console.error('Error seeding slots:', error);
+            alert('❌ Failed to seed availability slots');
+        } finally {
+            setSeeding(false);
+        }
+    };
+
     return (
         <AdminLayout>
             <div className="space-y-6">
@@ -80,12 +107,21 @@ export default function AvailabilityPage() {
                         <h1 className="text-2xl font-bold text-slate-900">Availability</h1>
                         <p className="text-sm text-slate-500">Schedule doctor timings and manage bookable slots</p>
                     </div>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="btn-primary flex items-center gap-2"
-                    >
-                        <span>⏰</span> Add Time Slot
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleSeedSlots}
+                            disabled={seeding}
+                            className="btn-secondary flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span>🌱</span> {seeding ? 'Seeding...' : 'Seed Next 3 Days'}
+                        </button>
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="btn-primary flex items-center gap-2"
+                        >
+                            <span>⏰</span> Add Time Slot
+                        </button>
+                    </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
