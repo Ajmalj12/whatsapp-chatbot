@@ -22,12 +22,14 @@ export async function POST(req: Request) {
         console.log(`[Webhook] Message from: ${from}`);
 
         let text = "";
+        let interactiveId = "";
         if (message.type === 'text') {
             text = message.text.body;
         } else if (message.type === 'interactive') {
             text = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
+            interactiveId = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || "";
         }
-        console.log(`[Webhook] Extracted Text: "${text}"`);
+        console.log(`[Webhook] Extracted Text: "${text}", ID: "${interactiveId}"`);
 
         let session = await prisma.session.findUnique({
             where: { phone: from },
@@ -93,7 +95,7 @@ export async function POST(req: Request) {
                             "Select Department",
                             [{
                                 title: "Departments",
-                                rows: departments.map((dept: any) => ({
+                                rows: departments.slice(0, 10).map((dept: any) => ({
                                     id: `dept_${dept.id}`,
                                     title: dept.name,
                                     description: dept.description?.slice(0, 72)
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
                             "Select Doctor",
                             [{
                                 title: "Available Doctors",
-                                rows: doctors.map((d: any) => ({
+                                rows: doctors.slice(0, 10).map((d: any) => ({
                                     id: `doc_${d.id}`,
                                     title: d.name,
                                     description: d.department
@@ -149,7 +151,7 @@ export async function POST(req: Request) {
                             "Select Department",
                             [{
                                 title: "Departments",
-                                rows: departments.map((dept: any) => ({
+                                rows: departments.slice(0, 10).map((dept: any) => ({
                                     id: `dept_${dept.id}`,
                                     title: dept.name,
                                     description: dept.description?.slice(0, 72)
@@ -168,7 +170,7 @@ export async function POST(req: Request) {
                             "Select Doctor",
                             [{
                                 title: "Available Doctors",
-                                rows: doctors.map((d: any) => ({
+                                rows: doctors.slice(0, 10).map((d: any) => ({
                                     id: `doc_${d.id}`,
                                     title: d.name,
                                     description: d.department
@@ -186,13 +188,21 @@ export async function POST(req: Request) {
             }
 
             case 'DEPARTMENT_SELECTION': {
-                console.log(`[Webhook] Department selected: "${text}"`);
+                console.log(`[Webhook] Department selection input - Text: "${text}", ID: "${interactiveId}"`);
+
+                let selectedDeptName = text;
+                if (interactiveId.startsWith('dept_')) {
+                    const deptId = interactiveId.replace('dept_', '');
+                    const dept = await prisma.department.findUnique({ where: { id: deptId } });
+                    if (dept) selectedDeptName = dept.name;
+                }
+
                 const doctorsInDept = await prisma.doctor.findMany({
-                    where: { department: text, active: true }
+                    where: { department: selectedDeptName, active: true }
                 });
 
                 if (doctorsInDept.length === 0) {
-                    await sendWhatsAppMessage(from, `Sorry, no doctors are currently available in ${text}. Please try another department.`);
+                    await sendWhatsAppMessage(from, `Sorry, no doctors are currently available in ${selectedDeptName}. Please try another department.`);
                     const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
                     await sendWhatsAppList(
                         from,
@@ -200,7 +210,7 @@ export async function POST(req: Request) {
                         "Select Department",
                         [{
                             title: "Departments",
-                            rows: departmentsAll.map((dept: any) => ({
+                            rows: departmentsAll.slice(0, 10).map((dept: any) => ({
                                 id: `dept_${dept.id}`,
                                 title: dept.name,
                                 description: dept.description?.slice(0, 72)
@@ -214,17 +224,17 @@ export async function POST(req: Request) {
                     where: { phone: from },
                     data: {
                         currentStep: 'DOCTOR_SELECTION',
-                        data: JSON.stringify({ ...currentData, selectedDepartment: text })
+                        data: JSON.stringify({ ...currentData, selectedDepartment: selectedDeptName })
                     },
                 });
 
                 await sendWhatsAppList(
                     from,
-                    `Available doctors in ${text} 👇`,
+                    `Available doctors in ${selectedDeptName} 👇`,
                     "Select Doctor",
                     [{
-                        title: text,
-                        rows: doctorsInDept.map((d: any) => ({
+                        title: selectedDeptName,
+                        rows: doctorsInDept.slice(0, 10).map((d: any) => ({
                             id: `doc_${d.id}`,
                             title: d.name,
                             description: d.specialization || d.department
@@ -236,11 +246,17 @@ export async function POST(req: Request) {
 
 
             case 'DOCTOR_SELECTION': {
-                // No longer need explicit "View All Doctors" check here because it's the default UI now
-                console.log(`[Webhook] Searching for doctor matching: "${text}"`);
-                const selectedDoctor = await prisma.doctor.findFirst({
-                    where: { name: { contains: text, mode: 'insensitive' } }
-                });
+                console.log(`[Webhook] Doctor selection input - Text: "${text}", ID: "${interactiveId}"`);
+
+                let selectedDoctor = null;
+                if (interactiveId.startsWith('doc_')) {
+                    const docId = interactiveId.replace('doc_', '');
+                    selectedDoctor = await prisma.doctor.findUnique({ where: { id: docId } });
+                } else {
+                    selectedDoctor = await prisma.doctor.findFirst({
+                        where: { name: { contains: text, mode: 'insensitive' } }
+                    });
+                }
 
                 if (selectedDoctor) {
                     console.log(`[Webhook] Found doctor: ${selectedDoctor.name}`);
@@ -310,7 +326,7 @@ export async function POST(req: Request) {
                             "Select Time",
                             [{
                                 title: "Time Slots",
-                                rows: slotButtons.map((time, idx) => ({
+                                rows: slotButtons.slice(0, 10).map((time, idx) => ({
                                     id: `slot_${idx}`,
                                     title: time
                                 }))
@@ -341,7 +357,7 @@ export async function POST(req: Request) {
                             "Select Doctor",
                             [{
                                 title: "Doctors",
-                                rows: doctorsAll.map((d: any) => ({
+                                rows: doctorsAll.slice(0, 10).map((d: any) => ({
                                     id: `doc_${d.id}`,
                                     title: d.name,
                                     description: d.department
@@ -393,7 +409,7 @@ export async function POST(req: Request) {
                             "Select Department",
                             [{
                                 title: "Departments",
-                                rows: departments.map((dept: any) => ({
+                                rows: departments.slice(0, 10).map((dept: any) => ({
                                     id: `dept_${dept.id}`,
                                     title: dept.name,
                                     description: dept.description?.slice(0, 72)
@@ -407,7 +423,7 @@ export async function POST(req: Request) {
                             "Select Doctor",
                             [{
                                 title: "Available Doctors",
-                                rows: doctorsAllList.map((d: any) => ({
+                                rows: doctorsAllList.slice(0, 10).map((d: any) => ({
                                     id: `doc_${d.id}`,
                                     title: d.name,
                                     description: d.department
@@ -536,12 +552,18 @@ export async function POST(req: Request) {
                 const selectTimeText = text.trim();
                 const slotsData = currentData.availableSlots || [];
 
-                // Find the slot that matches the selected time
-                const matchedSltShortcut = slotsData.find((slot: any) => {
-                    const slotTime = new Date(slot.startTime);
-                    const tStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                    return tStr === selectTimeText;
-                });
+                let matchedSltShortcut = null;
+                if (interactiveId.startsWith('slot_')) {
+                    const slotIdx = parseInt(interactiveId.replace('slot_', ''));
+                    matchedSltShortcut = slotsData[slotIdx];
+                } else {
+                    // Fallback to text matching
+                    matchedSltShortcut = slotsData.find((slot: any) => {
+                        const slotTime = new Date(slot.startTime);
+                        const tStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        return tStr === selectTimeText;
+                    });
+                }
 
                 if (matchedSltShortcut) {
                     await prisma.session.update({
@@ -606,19 +628,22 @@ export async function POST(req: Request) {
             }
 
             case 'AVAILABILITY_SELECTION': {
-                const doctorIdSel = currentData.doctorId;
                 const selectedDateStr = currentData.selectedDate;
                 const avSlotsData = currentData.availableSlots || [];
-
-                // Handle selection
                 const selTimeText = text.trim();
 
-                // Find the slot that matches the selected time
-                const matchedSlt = avSlotsData.find((slot: any) => {
-                    const slotTime = new Date(slot.startTime);
-                    const timeStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                    return timeStr === selTimeText;
-                });
+                let matchedSlt = null;
+                if (interactiveId.startsWith('slot_')) {
+                    const slotIdx = parseInt(interactiveId.replace('slot_', ''));
+                    matchedSlt = avSlotsData[slotIdx];
+                } else {
+                    // Fallback to text matching
+                    matchedSlt = avSlotsData.find((slot: any) => {
+                        const slotTime = new Date(slot.startTime);
+                        const timeStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        return timeStr === selTimeText;
+                    });
+                }
 
                 if (matchedSlt) {
                     await prisma.session.update({
@@ -630,20 +655,17 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSlt.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    // Always use the list format for consistency if selection is invalid or first time entering
+                    // Re-send list if no match
                     await sendWhatsAppList(
                         from,
                         `All available slots for on ${selectedDateStr} 👇`,
                         "Select Time",
                         [{
                             title: "Time Slots",
-                            rows: avSlotsData.slice(0, 10).map((slot: any, idx: number) => {
-                                const time = new Date(slot.startTime);
-                                return {
-                                    id: `slot_${idx}`,
-                                    title: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                                };
-                            })
+                            rows: avSlotsData.slice(0, 10).map((slot: any, idx: number) => ({
+                                id: `slot_${idx}`,
+                                title: new Date(slot.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                            }))
                         }]
                     );
                 }
