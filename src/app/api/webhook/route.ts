@@ -113,6 +113,7 @@ export async function POST(req: Request) {
                 }
                 break;
 
+
             case 'DOCTOR_SELECTION':
                 console.log(`[Webhook] Searching for doctor matching: "${text}"`);
                 const selectedDoctor = await prisma.doctor.findFirst({
@@ -121,6 +122,75 @@ export async function POST(req: Request) {
 
                 if (selectedDoctor) {
                     console.log(`[Webhook] Found doctor: ${selectedDoctor.name}`);
+
+                    // Check if user mentioned a date/time in the same message
+                    const parsedTimeInMessage = containsTimeRequest(text) ? parseNaturalTime(text) : null;
+
+                    if (parsedTimeInMessage) {
+                        // User said something like "book tomorrow for dr anil"
+                        console.log(`[Webhook] Detected date in message: ${parsedTimeInMessage.date}`);
+
+                        const requestedDate = parsedTimeInMessage.date;
+                        const startOfDay = new Date(requestedDate);
+                        startOfDay.setHours(0, 0, 0, 0);
+                        const endOfDay = new Date(requestedDate);
+                        endOfDay.setHours(23, 59, 59, 999);
+
+                        // Get all slots for that specific day
+                        const slotsForDay = await prisma.availability.findMany({
+                            where: {
+                                doctorId: selectedDoctor.id,
+                                isBooked: false,
+                                startTime: {
+                                    gte: startOfDay,
+                                    lte: endOfDay
+                                }
+                            },
+                            orderBy: { startTime: 'asc' },
+                        });
+
+                        if (slotsForDay.length === 0) {
+                            await sendWhatsAppMessage(
+                                from,
+                                `Sorry, ${selectedDoctor.name} has no available slots on ${formatAppointmentTime(requestedDate)}. Would you like to:\\n\\n1. Choose another date\\n2. Choose another doctor`
+                            );
+                            return NextResponse.json({ status: 'ok' });
+                        }
+
+                        // Show all available slots for that day
+                        const slotButtons = slotsForDay.slice(0, 10).map((slot: any) => {
+                            const time = new Date(slot.startTime);
+                            return time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        });
+
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'TIME_SELECTION',
+                                data: JSON.stringify({
+                                    ...currentData,
+                                    doctorId: selectedDoctor.id,
+                                    doctorName: selectedDoctor.name,
+                                    selectedDate: requestedDate.toISOString(),
+                                    availableSlots: slotsForDay.map((s: any) => ({
+                                        id: s.id,
+                                        startTime: s.startTime,
+                                        endTime: s.endTime
+                                    }))
+                                })
+                            },
+                        });
+
+                        const dateStr = requestedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                        await sendWhatsAppButtons(
+                            from,
+                            `📅 Available slots for ${selectedDoctor.name} on ${dateStr}:\\n\\nPlease select a time 👇`,
+                            slotButtons
+                        );
+                        return NextResponse.json({ status: 'ok' });
+                    }
+
+                    // No date mentioned, ask for preferred time
                     const slots = await prisma.availability.findMany({
                         where: {
                             doctorId: selectedDoctor.id,
@@ -139,7 +209,7 @@ export async function POST(req: Request) {
                         return NextResponse.json({ status: 'ok' });
                     }
 
-                    // NEW: Ask for preferred time or browse slots
+                    // Ask for preferred time or browse slots
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
@@ -159,6 +229,7 @@ export async function POST(req: Request) {
                     await sendWhatsAppButtons(from, `I couldn't find that doctor. Please choose from the list 👇\n\n${doctorList}`, doctors.map((d: any) => d.name));
                 }
                 break;
+
 
             case 'TIME_REQUEST':
                 const doctorId = currentData.doctorId;
@@ -255,6 +326,32 @@ export async function POST(req: Request) {
                     await sendWhatsAppMessage(from, "Great! Please enter the Patient's Name:");
                 } else {
                     await sendWhatsAppMessage(from, "Please reply with 1, 2, or 3 to select a time slot.");
+                }
+                break;
+
+            case 'TIME_SELECTION':
+                // User selected a time from the available slots shown
+                const selectedTimeText = text.trim();
+                const availableSlotsData = currentData.availableSlots || [];
+
+                // Find the slot that matches the selected time
+                const matchedSlot = availableSlotsData.find((slot: any) => {
+                    const slotTime = new Date(slot.startTime);
+                    const timeStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                    return timeStr === selectedTimeText;
+                });
+
+                if (matchedSlot) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: {
+                            currentStep: 'COLLECT_NAME',
+                            data: JSON.stringify({ ...currentData, availabilityId: matchedSlot.id })
+                        },
+                    });
+                    await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSlot.startTime)}.\n\nPlease enter the Patient's Name:`);
+                } else {
+                    await sendWhatsAppMessage(from, "Please select one of the available time slots from the buttons above.");
                 }
                 break;
 
