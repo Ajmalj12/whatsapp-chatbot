@@ -5,6 +5,7 @@ export interface ParsedTime {
     date: Date;
     confidence: 'high' | 'medium' | 'low';
     originalText: string;
+    isTimeCertain: boolean;
 }
 
 /**
@@ -26,7 +27,8 @@ export function parseNaturalTime(text: string, referenceDate: Date = new Date())
             return {
                 date: parsedDate,
                 confidence: result.start.isCertain('hour') ? 'high' : 'medium',
-                originalText: cleanText
+                originalText: cleanText,
+                isTimeCertain: result.start.isCertain('hour')
             };
         }
     }
@@ -82,7 +84,8 @@ function parseSimpleTime(text: string, referenceDate: Date): ParsedTime | null {
                 return {
                     date: parsedDate,
                     confidence: 'medium',
-                    originalText: text
+                    originalText: text,
+                    isTimeCertain: true
                 };
             }
         }
