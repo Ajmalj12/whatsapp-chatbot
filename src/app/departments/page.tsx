@@ -15,6 +15,7 @@ export default function DepartmentsPage() {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [form, setForm] = useState({ name: '', description: '', icon: '', displayOrder: 0 });
     const [loading, setLoading] = useState(false);
+    const [seeding, setSeeding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -77,12 +78,47 @@ export default function DepartmentsPage() {
         fetchDepartments();
     };
 
+    const handleSeedDepartments = async () => {
+        if (!confirm('This will create 8 common hospital departments. Continue?')) {
+            return;
+        }
+
+        setSeeding(true);
+        try {
+            const res = await fetch('/api/departments/seed', {
+                method: 'POST',
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert(`✅ Success! Created ${data.departmentsCreated} departments.`);
+                fetchDepartments();
+            } else {
+                alert(`❌ Error: ${data.error || 'Failed to seed departments'}`);
+            }
+        } catch (error) {
+            console.error('Error seeding departments:', error);
+            alert('❌ Failed to seed departments');
+        } finally {
+            setSeeding(false);
+        }
+    };
+
     return (
         <AdminLayout>
             <div className="space-y-8">
-                <header>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Department Management</h1>
-                    <p className="mt-2 text-sm text-slate-500">Manage hospital departments and their display order.</p>
+                <header className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Department Management</h1>
+                        <p className="mt-2 text-sm text-slate-500">Manage hospital departments and their display order.</p>
+                    </div>
+                    <button
+                        onClick={handleSeedDepartments}
+                        disabled={seeding}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                    >
+                        <span>🌱</span> {seeding ? 'Seeding...' : 'Seed Departments'}
+                    </button>
                 </header>
 
                 <div className="grid gap-8 lg:grid-cols-3">
