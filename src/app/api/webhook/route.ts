@@ -216,6 +216,28 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'ok' });
         };
 
+        // --- GLOBAL SHORTCUTS ---
+        // If a known doctor is mentioned, bypass current step and jump to doctor selection
+        if (session.currentStep !== 'COLLECT_NAME' && session.currentStep !== 'COLLECT_AGE' && text.length > 3) {
+            const allDoctors = await prisma.doctor.findMany({ where: { active: true } });
+
+            // Normalize text and doctor names for comparison
+            // "Dr. Kevin" -> "kevin", "Dr Kevin" -> "kevin", "Kevin" -> "kevin"
+            const cleanInput = text.toLowerCase().replace(/dr\.?\s*/g, '');
+
+            const matchedDoctor = allDoctors.find(d => {
+                const cleanDocName = d.name.toLowerCase().replace(/dr\.?\s*/g, '');
+                // Check if the clean input contains the clean doctor name as a distinct word
+                // e.g. "book kevin tomorrow" contains "kevin"
+                return cleanInput.includes(cleanDocName);
+            });
+
+            if (matchedDoctor) {
+                console.log(`[Webhook] Global Shortcut: Doctor "${matchedDoctor.name}" detected in message "${text}"`);
+                return await handleDoctorSelection(from, text, `doc_${matchedDoctor.id}`, matchedDoctor, currentData);
+            }
+        }
+
         switch (session.currentStep) {
             case 'LANGUAGE_SELECTION': {
                 const lang = text === 'മലയാളം' ? 'malayalam' : 'english';
