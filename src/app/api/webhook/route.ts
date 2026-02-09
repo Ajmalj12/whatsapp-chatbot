@@ -449,6 +449,17 @@ export async function POST(req: Request) {
             case 'DEPARTMENT_SELECTION': {
                 console.log(`[Webhook] Department selection input - Text: "${text}", ID: "${interactiveId}"`);
 
+                // SHORTCUT: Check if input is actually a DOCTOR's name (e.g. "Book dr kevin")
+                if (!interactiveId.startsWith('dept_')) {
+                    const doctors = await prisma.doctor.findMany({ where: { active: true } });
+                    const mentionedDoctor = doctors.find(d => text.toLowerCase().includes(d.name.toLowerCase()));
+
+                    if (mentionedDoctor) {
+                        console.log(`[Webhook] Shortcut: Doctor "${mentionedDoctor.name}" detected in DEPARTMENT_SELECTION`);
+                        return await handleDoctorSelection(from, text, `doc_${mentionedDoctor.id}`, mentionedDoctor, currentData);
+                    }
+                }
+
                 let selectedDeptName = "";
 
                 if (interactiveId.startsWith('dept_')) {
