@@ -227,9 +227,14 @@ export async function POST(req: Request) {
 
             const matchedDoctor = allDoctors.find(d => {
                 const cleanDocName = d.name.toLowerCase().replace(/dr\.?\s*/g, '');
-                // Check if the clean input contains the clean doctor name as a distinct word
-                // e.g. "book kevin tomorrow" contains "kevin"
-                return cleanInput.includes(cleanDocName);
+                // Split doctor name into parts (e.g. "kevin taylor" -> ["kevin", "taylor"])
+                const nameParts = cleanDocName.split(' ').filter(part => part.length > 2);
+
+                // Check if ANY significant part of the name is in the input as a whole word
+                return nameParts.some(part => {
+                    const regex = new RegExp(`\\b${part}\\b`, 'i');
+                    return regex.test(cleanInput);
+                });
             });
 
             if (matchedDoctor) {
