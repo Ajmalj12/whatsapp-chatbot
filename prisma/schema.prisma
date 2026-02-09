@@ -8,12 +8,14 @@ datasource db {
 }
 
 model Doctor {
-  id           String         @id @default(auto()) @map("_id") @db.ObjectId
-  name         String
-  department   String
-  active       Boolean        @default(true)
-  availability Availability[]
-  appointments Appointment[]
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  name              String
+  department        String
+  specialization    String?
+  consultationHours String?
+  active            Boolean        @default(true)
+  availability      Availability[]
+  appointments      Appointment[]
 }
 
 model Availability {
@@ -55,4 +57,15 @@ model KnowledgeBase {
   answer    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String   @unique
+  description  String?
+  icon         String?
+  displayOrder Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
