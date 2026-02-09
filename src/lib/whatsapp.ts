@@ -83,6 +83,23 @@ export async function sendWhatsAppList(to: string, text: string, buttonText: str
     const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
     console.log(`Sending WhatsApp list to ${to}: ${text}`);
 
+    // Safety guard: WhatsApp allows maximum 10 rows total across all sections
+    const sanitizedSections = sections.map(section => ({
+        ...section,
+        rows: section.rows.slice(0, 10) // Individual section safety
+    })).slice(0, 10); // Section count safety (though usually 1)
+
+    // Calculate total rows and trim if needed
+    let totalRows = 0;
+    const finalSections = sanitizedSections.map(section => {
+        const remainingSpace = 10 - totalRows;
+        if (remainingSpace <= 0) return { ...section, rows: [] };
+
+        const rowsToShow = section.rows.slice(0, remainingSpace);
+        totalRows += rowsToShow.length;
+        return { ...section, rows: rowsToShow };
+    }).filter(s => s.rows.length > 0);
+
     const payload = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
@@ -92,8 +109,8 @@ export async function sendWhatsAppList(to: string, text: string, buttonText: str
             type: "list",
             body: { text: text },
             action: {
-                button: buttonText,
-                sections: sections
+                button: buttonText.slice(0, 20),
+                sections: finalSections
             }
         }
     };
