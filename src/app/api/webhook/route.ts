@@ -610,25 +610,7 @@ export async function POST(req: Request) {
                 const selectedDateStr = currentData.selectedDate;
                 const avSlotsData = currentData.availableSlots || [];
 
-                // Always use the list format for consistency
-                await sendWhatsAppList(
-                    from,
-                    `All available slots for on ${selectedDateStr} 👇`,
-                    "Select Time",
-                    [{
-                        title: "Time Slots",
-                        rows: avSlotsData.slice(0, 10).map((slot: any, idx: number) => {
-                            const time = new Date(slot.startTime);
-                            return {
-                                id: `slot_${idx}`,
-                                title: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                            };
-                        })
-                    }]
-                );
-                return NextResponse.json({ status: 'ok' });
-
-                // Handle button click or list item click (time string)
+                // Handle selection
                 const selTimeText = text.trim();
 
                 // Find the slot that matches the selected time
@@ -648,7 +630,22 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSlt.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    await sendWhatsAppMessage(from, "Please select one of the available time slots.");
+                    // Always use the list format for consistency if selection is invalid or first time entering
+                    await sendWhatsAppList(
+                        from,
+                        `All available slots for on ${selectedDateStr} 👇`,
+                        "Select Time",
+                        [{
+                            title: "Time Slots",
+                            rows: avSlotsData.slice(0, 10).map((slot: any, idx: number) => {
+                                const time = new Date(slot.startTime);
+                                return {
+                                    id: `slot_${idx}`,
+                                    title: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                                };
+                            })
+                        }]
+                    );
                 }
                 break;
             }
