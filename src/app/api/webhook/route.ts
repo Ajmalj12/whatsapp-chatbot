@@ -84,14 +84,19 @@ export async function POST(req: Request) {
                         data: { currentStep: 'DOCTOR_SELECTION' },
                     });
 
-                    const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
-                    const doctorNames = doctors.map((d: any) => d.name);
-
-                    if (doctors.length > 3) {
-                        await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, [...doctorNames.slice(0, 2), "View All Doctors"]);
-                    } else {
-                        await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, doctorNames);
-                    }
+                    await sendWhatsAppList(
+                        from,
+                        "Please choose a doctor 👇",
+                        "Select Doctor",
+                        [{
+                            title: "Available Doctors",
+                            rows: doctors.map((d: any) => ({
+                                id: `doc_${d.id}`,
+                                title: d.name,
+                                description: d.department
+                            }))
+                        }]
+                    );
                 } else if (text.includes('know more') || text.includes('Need')) {
                     await prisma.session.update({
                         where: { phone: from },
@@ -113,14 +118,19 @@ export async function POST(req: Request) {
                         data: { currentStep: 'DOCTOR_SELECTION' },
                     });
 
-                    const doctorList = doctors.map((d: any) => `🩺 ${d.name} (${d.department})`).join('\n');
-                    const doctorNames = doctors.map((d: any) => d.name);
-
-                    if (doctors.length > 3) {
-                        await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, [...doctorNames.slice(0, 2), "View All Doctors"]);
-                    } else {
-                        await sendWhatsAppButtons(from, `Please choose a doctor 👇\n\n${doctorList}`, doctorNames);
-                    }
+                    await sendWhatsAppList(
+                        from,
+                        "Please choose a doctor 👇",
+                        "Select Doctor",
+                        [{
+                            title: "Available Doctors",
+                            rows: doctors.map((d: any) => ({
+                                id: `doc_${d.id}`,
+                                title: d.name,
+                                description: d.department
+                            }))
+                        }]
+                    );
                 } else {
                     // AI Reply with dynamic context (no need to pass static context)
                     const aiReply = await getAIResponse(text);
@@ -132,24 +142,7 @@ export async function POST(req: Request) {
 
 
             case 'DOCTOR_SELECTION': {
-                if (text === "View All Doctors") {
-                    const docListAll = await prisma.doctor.findMany({ where: { active: true } });
-                    await sendWhatsAppList(
-                        from,
-                        "Please choose a doctor from the full list 👇",
-                        "Select Doctor",
-                        [{
-                            title: "Available Doctors",
-                            rows: docListAll.map((d: any) => ({
-                                id: `doc_${d.id}`,
-                                title: d.name,
-                                description: d.department
-                            }))
-                        }]
-                    );
-                    return NextResponse.json({ status: 'ok' });
-                }
-
+                // No longer need explicit "View All Doctors" check here because it's the default UI now
                 console.log(`[Webhook] Searching for doctor matching: "${text}"`);
                 const selectedDoctor = await prisma.doctor.findFirst({
                     where: { name: { contains: text, mode: 'insensitive' } }
@@ -216,10 +209,10 @@ export async function POST(req: Request) {
                             },
                         });
 
-                        const dateStr = requestedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+                        const dateSlStr = requestedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
                         await sendWhatsAppList(
                             from,
-                            `📅 Available slots for ${selectedDoctor.name} on ${dateStr}:\n\nNext available times 👇`,
+                            `📅 Available slots for ${selectedDoctor.name} on ${dateSlStr}:\n\nPlease select a time 👇`,
                             "Select Time",
                             [{
                                 title: "Time Slots",
@@ -470,17 +463,18 @@ export async function POST(req: Request) {
                     },
                 });
 
-                if (filteredSlots.length > 3) {
-                    const topSlotsStrings = filteredSlots.slice(0, 2).map((s: any) =>
-                        new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    );
-                    await sendWhatsAppButtons(from, `Available slots on ${selDate} 👇`, [...topSlotsStrings, "View All Slots"]);
-                } else {
-                    const topSlotsStrings = filteredSlots.map((s: any) =>
-                        new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    );
-                    await sendWhatsAppButtons(from, `Available slots on ${selDate} 👇`, topSlotsStrings);
-                }
+                await sendWhatsAppList(
+                    from,
+                    `Available slots on ${selDate} 👇`,
+                    "Select Time",
+                    [{
+                        title: "Time Slots",
+                        rows: filteredSlots.map((s: any, idx: number) => ({
+                            id: `slot_${idx}`,
+                            title: new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                        }))
+                    }]
+                );
                 break;
             }
 
@@ -489,24 +483,23 @@ export async function POST(req: Request) {
                 const selectedDateStr = currentData.selectedDate;
                 const avSlotsData = currentData.availableSlots || [];
 
-                if (text === "View All Slots") {
-                    await sendWhatsAppList(
-                        from,
-                        `All available slots for on ${selectedDateStr} 👇`,
-                        "Select Time",
-                        [{
-                            title: "Time Slots",
-                            rows: avSlotsData.map((slot: any, idx: number) => {
-                                const time = new Date(slot.startTime);
-                                return {
-                                    id: `slot_${idx}`,
-                                    title: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                                };
-                            })
-                        }]
-                    );
-                    return NextResponse.json({ status: 'ok' });
-                }
+                // Always use the list format for consistency
+                await sendWhatsAppList(
+                    from,
+                    `All available slots for on ${selectedDateStr} 👇`,
+                    "Select Time",
+                    [{
+                        title: "Time Slots",
+                        rows: avSlotsData.map((slot: any, idx: number) => {
+                            const time = new Date(slot.startTime);
+                            return {
+                                id: `slot_${idx}`,
+                                title: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                            };
+                        })
+                    }]
+                );
+                return NextResponse.json({ status: 'ok' });
 
                 // Handle button click or list item click (time string)
                 const selTimeText = text.trim();
