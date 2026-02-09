@@ -123,11 +123,11 @@ export async function POST(req: Request) {
                 if (selectedDoctor) {
                     console.log(`[Webhook] Found doctor: ${selectedDoctor.name}`);
 
-                    // Check if user mentioned a date/time in the same message
+                    // Check if user mentioned a date/time in the same message (e.g., "book tomorrow for dr anil")
                     const parsedTimeInMessage = containsTimeRequest(text) ? parseNaturalTime(text) : null;
 
                     if (parsedTimeInMessage) {
-                        // User said something like "book tomorrow for dr anil"
+                        // SHORTCUT: User said something like "book tomorrow for dr anil"
                         console.log(`[Webhook] Detected date in message: ${parsedTimeInMessage.date}`);
 
                         const requestedDate = parsedTimeInMessage.date;
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
                         if (slotsForDay.length === 0) {
                             await sendWhatsAppMessage(
                                 from,
-                                `Sorry, ${selectedDoctor.name} has no available slots on ${formatAppointmentTime(requestedDate)}. Would you like to:\\n\\n1. Choose another date\\n2. Choose another doctor`
+                                `Sorry, ${selectedDoctor.name} has no available slots on ${formatAppointmentTime(requestedDate)}. Would you like to:\n\n1. Choose another date\n2. Choose another doctor`
                             );
                             return NextResponse.json({ status: 'ok' });
                         }
@@ -184,13 +184,13 @@ export async function POST(req: Request) {
                         const dateStr = requestedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
                         await sendWhatsAppButtons(
                             from,
-                            `📅 Available slots for ${selectedDoctor.name} on ${dateStr}:\\n\\nPlease select a time 👇`,
+                            `📅 Available slots for ${selectedDoctor.name} on ${dateStr}:\n\nPlease select a time 👇`,
                             slotButtons
                         );
                         return NextResponse.json({ status: 'ok' });
                     }
 
-                    // No date mentioned, ask for preferred time
+                    // ORIGINAL FLOW: Show available dates first
                     const slots = await prisma.availability.findMany({
                         where: {
                             doctorId: selectedDoctor.id,
@@ -209,19 +209,20 @@ export async function POST(req: Request) {
                         return NextResponse.json({ status: 'ok' });
                     }
 
-                    // Ask for preferred time or browse slots
+                    // Show available dates (original flow)
+                    const uniqueDates: string[] = Array.from(new Set<string>(slots.map((s: any) =>
+                        new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                    ))).slice(0, 3);
+
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
-                            currentStep: 'TIME_REQUEST',
+                            currentStep: 'DATE_SELECTION',
                             data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name })
                         },
                     });
 
-                    await sendWhatsAppMessage(
-                        from,
-                        `Great! Do you have a preferred date and time?\n\nExamples:\n• "Tomorrow at 3 PM"\n• "Feb 15 at 10:30"\n• "Next Monday 2pm"\n\nOr reply "Browse slots" to see available times.`
-                    );
+                    await sendWhatsAppButtons(from, `Please select a date for your appointment with ${selectedDoctor.name} 👇`, uniqueDates);
                 } else {
                     console.log(`[Webhook] No doctor matched "${text}". Resending list.`);
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
