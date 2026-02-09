@@ -290,10 +290,7 @@ export async function POST(req: Request) {
             case 'KNOWLEDGE_QUERY': {
                 if (text.toLowerCase().includes('book') ||
                     text.toLowerCase().includes('appointment') ||
-                    text.toLowerCase().includes('consult') ||
-                    text.toLowerCase().includes('doctor') ||
-                    text.toLowerCase().includes('available') ||
-                    text.toLowerCase().includes('schedule')) {
+                    text.toLowerCase().includes('consult')) {
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
 
                     // Natural Language Shortcut: Check if a doctor is mentioned
