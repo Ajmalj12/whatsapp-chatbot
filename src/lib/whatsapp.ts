@@ -78,3 +78,44 @@ export async function sendWhatsAppButtons(to: string, text: string, buttons: str
         throw error;
     }
 }
+
+export async function sendWhatsAppList(to: string, text: string, buttonText: string, sections: { title: string, rows: { id: string, title: string, description?: string }[] }[]) {
+    const url = `https://graph.facebook.com/v22.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    console.log(`Sending WhatsApp list to ${to}: ${text}`);
+
+    const payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: "interactive",
+        interactive: {
+            type: "list",
+            body: { text: text },
+            action: {
+                button: buttonText,
+                sections: sections
+            }
+        }
+    };
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        console.log("WhatsApp List API Response:", JSON.stringify(result, null, 2));
+        if (!response.ok) {
+            console.error("WhatsApp API Error (List):", result);
+        }
+        return result;
+    } catch (error) {
+        console.error("Failed to send WhatsApp list:", error);
+        throw error;
+    }
+}
