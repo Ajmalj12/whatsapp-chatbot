@@ -14,6 +14,7 @@ export default function DoctorsPage() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [seeding, setSeeding] = useState(false);
     const [newDoctor, setNewDoctor] = useState({ name: '', department: '' });
 
     useEffect(() => {
@@ -79,6 +80,32 @@ export default function DoctorsPage() {
         }
     };
 
+    const handleSeedDoctors = async () => {
+        if (!confirm('This will create 16 demo doctors across all departments. Make sure you have seeded departments first. Continue?')) {
+            return;
+        }
+
+        setSeeding(true);
+        try {
+            const res = await fetch('/api/doctors/seed', {
+                method: 'POST',
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                alert(`✅ Success! Created ${data.doctorsCreated} demo doctors.`);
+                fetchDoctors();
+            } else {
+                alert(`❌ Error: ${data.error || 'Failed to seed doctors'}`);
+            }
+        } catch (error) {
+            console.error('Error seeding doctors:', error);
+            alert('❌ Failed to seed doctors');
+        } finally {
+            setSeeding(false);
+        }
+    };
+
     return (
         <AdminLayout>
             <div className="space-y-6">
@@ -87,12 +114,21 @@ export default function DoctorsPage() {
                         <h1 className="text-2xl font-bold text-slate-900">Doctors</h1>
                         <p className="text-sm text-slate-500">Manage your hospital's medical staff</p>
                     </div>
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="btn-primary flex items-center gap-2"
-                    >
-                        <span>➕</span> Add New Doctor
-                    </button>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleSeedDoctors}
+                            disabled={seeding}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                        >
+                            <span>🌱</span> {seeding ? 'Seeding...' : 'Seed Doctors'}
+                        </button>
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="btn-primary flex items-center gap-2"
+                        >
+                            <span>➕</span> Add New Doctor
+                        </button>
+                    </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
