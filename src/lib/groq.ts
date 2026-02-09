@@ -3,7 +3,7 @@ import Groq from 'groq-sdk';
 import prisma from './prisma';
 
 const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY || 'dummy_key',
+    apiKey: process.env.GROQ_API_KEY,
 });
 
 export async function getAIResponse(userQuery: string, contextStrings: string[]) {
@@ -26,7 +26,7 @@ ${context}
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userQuery },
             ],
-            model: 'llama3-8b-8192', // or another available model
+            model: 'llama-3.1-8b-instant', // or another available model
         });
 
         return completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
