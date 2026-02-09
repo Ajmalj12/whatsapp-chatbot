@@ -180,7 +180,7 @@ export async function POST(req: Request) {
             }
 
             case 'MAIN_MENU': {
-                if (text.includes('Book') || text.toLowerCase().includes('doctor') || text.toLowerCase().includes('find')) {
+                if (text.includes('Book') || text.toLowerCase().includes('doctor') || text.toLowerCase().includes('find') || text.toLowerCase().includes('appointment')) {
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
 
                     // Natural Language Shortcut: Check if a doctor is mentioned in the message
@@ -189,6 +189,50 @@ export async function POST(req: Request) {
                     if (mentionedDoctor) {
                         console.log(`[Webhook] Shortcut: Doctor "${mentionedDoctor.name}" detected in message`);
                         return await handleDoctorSelection(from, text, `doc_${mentionedDoctor.id}`, mentionedDoctor, currentData);
+                    }
+
+                    // Natural Language Shortcut: Check if a DEPARTMENT is mentioned
+                    const allDepartments = await prisma.department.findMany({ where: { active: true } });
+                    let mentionedDept = allDepartments.find(d => {
+                        const deptName = d.name.toLowerCase();
+                        const input = text.toLowerCase();
+                        if (input.includes(deptName)) return true;
+                        if (input.includes('ent') && (deptName.includes('ear') || deptName.includes('ent'))) return true;
+                        if (input.includes('cardio') && deptName.includes('cardiology')) return true;
+                        if (input.includes('ortho') && deptName.includes('orthopedics')) return true;
+                        if (input.includes('derma') && deptName.includes('dermatology')) return true;
+                        if (input.includes('pedia') && deptName.includes('pediatrics')) return true;
+                        return false;
+                    });
+
+                    if (mentionedDept) {
+                        console.log(`[Webhook] Shortcut: Department "${mentionedDept.name}" detected in message`);
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'DOCTOR_SELECTION',
+                                data: JSON.stringify({ ...currentData, selectedDepartment: mentionedDept.name })
+                            },
+                        });
+
+                        const doctorsInDept = await prisma.doctor.findMany({
+                            where: { department: mentionedDept.name, active: true }
+                        });
+
+                        await sendWhatsAppList(
+                            from,
+                            `Available doctors in ${mentionedDept.name} 👇`,
+                            "Select Doctor",
+                            [{
+                                title: mentionedDept.name,
+                                rows: doctorsInDept.slice(0, 10).map((d: any) => ({
+                                    id: `doc_${d.id}`,
+                                    title: d.name,
+                                    description: d.specialization || d.department
+                                }))
+                            }]
+                        );
+                        return NextResponse.json({ status: 'ok' });
                     }
 
                     if (doctors.length > 10) {
@@ -244,7 +288,7 @@ export async function POST(req: Request) {
             }
 
             case 'KNOWLEDGE_QUERY': {
-                if (text.toLowerCase().includes('book') || text.toLowerCase().includes('appointment')) {
+                if (text.toLowerCase().includes('book') || text.toLowerCase().includes('appointment') || text.toLowerCase().includes('consult')) {
                     const doctors = await prisma.doctor.findMany({ where: { active: true } });
 
                     // Natural Language Shortcut: Check if a doctor is mentioned
@@ -253,6 +297,50 @@ export async function POST(req: Request) {
                     if (mentionedDoctor) {
                         console.log(`[Webhook] Shortcut: Doctor "${mentionedDoctor.name}" detected in query`);
                         return await handleDoctorSelection(from, text, `doc_${mentionedDoctor.id}`, mentionedDoctor, currentData);
+                    }
+
+                    // Natural Language Shortcut: Check if a DEPARTMENT is mentioned
+                    const allDepartments = await prisma.department.findMany({ where: { active: true } });
+                    let mentionedDept = allDepartments.find(d => {
+                        const deptName = d.name.toLowerCase();
+                        const input = text.toLowerCase();
+                        if (input.includes(deptName)) return true;
+                        if (input.includes('ent') && (deptName.includes('ear') || deptName.includes('ent'))) return true;
+                        if (input.includes('cardio') && deptName.includes('cardiology')) return true;
+                        if (input.includes('ortho') && deptName.includes('orthopedics')) return true;
+                        if (input.includes('derma') && deptName.includes('dermatology')) return true;
+                        if (input.includes('pedia') && deptName.includes('pediatrics')) return true;
+                        return false;
+                    });
+
+                    if (mentionedDept) {
+                        console.log(`[Webhook] Shortcut: Department "${mentionedDept.name}" detected in query`);
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'DOCTOR_SELECTION',
+                                data: JSON.stringify({ ...currentData, selectedDepartment: mentionedDept.name })
+                            },
+                        });
+
+                        const doctorsInDept = await prisma.doctor.findMany({
+                            where: { department: mentionedDept.name, active: true }
+                        });
+
+                        await sendWhatsAppList(
+                            from,
+                            `Available doctors in ${mentionedDept.name} 👇`,
+                            "Select Doctor",
+                            [{
+                                title: mentionedDept.name,
+                                rows: doctorsInDept.slice(0, 10).map((d: any) => ({
+                                    id: `doc_${d.id}`,
+                                    title: d.name,
+                                    description: d.specialization || d.department
+                                }))
+                            }]
+                        );
+                        return NextResponse.json({ status: 'ok' });
                     }
 
                     if (doctors.length > 10) {
@@ -307,11 +395,57 @@ export async function POST(req: Request) {
             case 'DEPARTMENT_SELECTION': {
                 console.log(`[Webhook] Department selection input - Text: "${text}", ID: "${interactiveId}"`);
 
-                let selectedDeptName = text;
+                let selectedDeptName = "";
+
                 if (interactiveId.startsWith('dept_')) {
                     const deptId = interactiveId.replace('dept_', '');
                     const dept = await prisma.department.findUnique({ where: { id: deptId } });
                     if (dept) selectedDeptName = dept.name;
+                } else {
+                    // Fuzzy match logic for text input
+                    const allDepartments = await prisma.department.findMany({ where: { active: true } });
+
+                    // 1. Direct match (case-insensitive)
+                    let matchedDept = allDepartments.find(d => d.name.toLowerCase() === text.toLowerCase());
+
+                    // 2. Keyword match (e.g., "ent" matches "ENT" or "Otorhinolaryngology")
+                    if (!matchedDept) {
+                        matchedDept = allDepartments.find(d => {
+                            const deptName = d.name.toLowerCase();
+                            const input = text.toLowerCase();
+                            // Check if input is part of name or common abbreviations
+                            if (deptName.includes(input)) return true;
+                            if (input === 'ent' && (deptName.includes('ear') || deptName.includes('ent'))) return true;
+                            if (input === 'cardio' && deptName.includes('cardiology')) return true;
+                            if (input === 'ortho' && deptName.includes('orthopedics')) return true;
+                            if (input === 'derma' && deptName.includes('dermatology')) return true;
+                            if (input === 'pedia' && deptName.includes('pediatrics')) return true;
+                            return false;
+                        });
+                    }
+
+                    if (matchedDept) {
+                        selectedDeptName = matchedDept.name;
+                    }
+                }
+
+                if (!selectedDeptName) {
+                    console.log(`[Webhook] No department matched for "${text}"`);
+                    const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
+                    await sendWhatsAppList(
+                        from,
+                        `I couldn't find a department matching "${text}". Please select from the list 👇`,
+                        "Select Department",
+                        [{
+                            title: "Departments",
+                            rows: departmentsAll.slice(0, 10).map((dept: any) => ({
+                                id: `dept_${dept.id}`,
+                                title: dept.name,
+                                description: dept.description?.slice(0, 72)
+                            }))
+                        }]
+                    );
+                    return NextResponse.json({ status: 'ok' });
                 }
 
                 const doctorsInDept = await prisma.doctor.findMany({

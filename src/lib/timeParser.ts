@@ -139,7 +139,13 @@ export function containsTimeRequest(text: string): boolean {
 /**
  * Format a Date object into a user-friendly string
  */
-export function formatAppointmentTime(date: Date): string {
+export function formatAppointmentTime(dateInput: Date | string): string {
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+
+    if (isNaN(date.getTime())) {
+        return "Invalid Date";
+    }
+
     const dateStr = date.toLocaleDateString('en-US', {
         weekday: 'short',
         month: 'short',
