@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children, fullWidth = false }: { children: React.ReactNode; fullWidth?: boolean }) {
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
             <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md">
@@ -40,7 +40,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     </div>
                 </div>
             </nav>
-            <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <main className={fullWidth ? "w-full" : "mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"}>
                 {children}
             </main>
         </div>

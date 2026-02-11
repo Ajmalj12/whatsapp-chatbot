@@ -35,21 +35,7 @@ export async function POST(req: Request) {
             where: { phone: from },
         });
 
-        // 1. GLOBAL RESET: Allow starting over at any time
-        const cleanText = text.toLowerCase().trim();
-        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText)) {
-            console.log(`[Webhook] Global reset triggered for ${from}`);
-            if (session) {
-                await prisma.session.delete({ where: { phone: from } });
-            }
-            session = await prisma.session.create({
-                data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
-            });
-            await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
-            return NextResponse.json({ status: 'ok' });
-        }
-
-        // 2. CHECK FOR ACTIVE TICKET (Escalation Mode)
+        // 1. CHECK FOR ACTIVE TICKET (Escalation Mode) - ORIGINALITY PRESERVED
         const activeTicket = await prisma.supportTicket.findFirst({
             where: { phone: from, status: 'OPEN' }
         });
@@ -63,6 +49,20 @@ export async function POST(req: Request) {
                     content: text
                 }
             });
+            return NextResponse.json({ status: 'ok' });
+        }
+
+        // 2. GLOBAL RESET: Allow starting over at any time
+        const cleanText = text.toLowerCase().trim();
+        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText)) {
+            console.log(`[Webhook] Global reset triggered for ${from}`);
+            if (session) {
+                await prisma.session.delete({ where: { phone: from } });
+            }
+            session = await prisma.session.create({
+                data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
+            });
+            await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
             return NextResponse.json({ status: 'ok' });
         }
 
