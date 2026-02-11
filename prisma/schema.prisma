@@ -69,3 +69,12 @@ model Department {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model SupportTicket {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  phone     String
+  query     String
+  status    String   @default("OPEN") // OPEN, RESOLVED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

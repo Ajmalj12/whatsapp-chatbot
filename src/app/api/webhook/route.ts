@@ -468,7 +468,21 @@ export async function POST(req: Request) {
                     // AI Reply with dynamic context (no need to pass static context)
                     const aiReply = await getAIResponse(text);
 
-                    await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                    if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                        // Create escalation ticket
+                        await prisma.supportTicket.create({
+                            data: {
+                                phone: from,
+                                query: text,
+                                status: 'OPEN'
+                            }
+                        });
+
+                        // Send escalation message
+                        await sendWhatsAppMessage(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻");
+                    } else {
+                        await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                    }
                 }
                 break;
             }
