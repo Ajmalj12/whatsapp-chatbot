@@ -316,11 +316,6 @@ export async function POST(req: Request) {
                         const deptName = d.name.toLowerCase();
                         const input = text.toLowerCase();
                         if (input.includes(deptName)) return true;
-                        if (input.includes('ent') && !input.includes('appointment') && (deptName.includes('ear') || deptName.includes('ent'))) return true;
-                        if (input.includes('cardio') && deptName.includes('cardiology')) return true;
-                        if (input.includes('ortho') && deptName.includes('orthopedics')) return true;
-                        if (input.includes('derma') && deptName.includes('dermatology')) return true;
-                        if (input.includes('pedia') && deptName.includes('pediatrics')) return true;
                         return false;
                     });
 
@@ -426,11 +421,6 @@ export async function POST(req: Request) {
                         const deptName = d.name.toLowerCase();
                         const input = text.toLowerCase();
                         if (input.includes(deptName)) return true;
-                        if (input.includes('ent') && !input.includes('appointment') && (deptName.includes('ear') || deptName.includes('ent'))) return true;
-                        if (input.includes('cardio') && deptName.includes('cardiology')) return true;
-                        if (input.includes('ortho') && deptName.includes('orthopedics')) return true;
-                        if (input.includes('derma') && deptName.includes('dermatology')) return true;
-                        if (input.includes('pedia') && deptName.includes('pediatrics')) return true;
                         return false;
                     });
 
