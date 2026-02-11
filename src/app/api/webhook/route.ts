@@ -955,25 +955,53 @@ export async function POST(req: Request) {
                 const doc = await prisma.doctor.findUnique({ where: { id: finalAgeData.doctorId } });
                 const slot = await prisma.availability.findUnique({ where: { id: finalAgeData.availabilityId } });
 
-                await prisma.appointment.create({
+                // Transition to confirmation step
+                await prisma.session.update({
+                    where: { phone: from },
                     data: {
-                        doctorId: finalAgeData.doctorId,
-                        availabilityId: finalAgeData.availabilityId,
-                        patientName: finalAgeData.patientName,
-                        patientAge: text,
-                        patientPhone: from,
-                    }
+                        currentStep: 'CONFIRM_BOOKING',
+                        data: JSON.stringify(finalAgeData)
+                    },
                 });
 
-                await prisma.availability.update({
-                    where: { id: finalAgeData.availabilityId },
-                    data: { isBooked: true }
-                });
+                const summaryMsg = `📋 *Booking Summary*\n\nPatient: ${finalAgeData.patientName}\nAge: ${text}\nDoctor: ${doc?.name}\nDate: ${new Date(slot?.startTime!).toLocaleDateString()}\nTime: ${new Date(slot?.startTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}\n\nPlease confirm your booking 👇`;
 
-                await prisma.session.delete({ where: { phone: from } });
+                await sendWhatsAppButtons(from, summaryMsg, ["Confirm Booking", "Cancel"]);
+                break;
+            }
 
-                const confirmMsg = `✅ Appointment Confirmed!\n\nDoctor: ${doc?.name}\nDate: ${new Date(slot?.startTime!).toLocaleDateString()}\nTime: ${new Date(slot?.startTime!).toLocaleTimeString()}\n\nOur team will contact you shortly.`;
-                await sendWhatsAppMessage(from, confirmMsg);
+            case 'CONFIRM_BOOKING': {
+                console.log(`[Webhook] Confirm booking input - Text: "${text}", ID: "${interactiveId}"`);
+
+                if (text === 'Confirm Booking') {
+                    const doc = await prisma.doctor.findUnique({ where: { id: currentData.doctorId } });
+                    const slot = await prisma.availability.findUnique({ where: { id: currentData.availabilityId } });
+
+                    await prisma.appointment.create({
+                        data: {
+                            doctorId: currentData.doctorId,
+                            availabilityId: currentData.availabilityId,
+                            patientName: currentData.patientName,
+                            patientAge: currentData.patientAge,
+                            patientPhone: from,
+                        }
+                    });
+
+                    await prisma.availability.update({
+                        where: { id: currentData.availabilityId },
+                        data: { isBooked: true }
+                    });
+
+                    await prisma.session.delete({ where: { phone: from } });
+
+                    const confirmMsg = `✅ *Appointment Confirmed!*\n\nDoctor: ${doc?.name}\nDate: ${new Date(slot?.startTime!).toLocaleDateString()}\nTime: ${new Date(slot?.startTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}\n\nOur team will contact you shortly if needed. Thank you!`;
+                    await sendWhatsAppButtons(from, confirmMsg, ["Book Appointment"]);
+                } else if (text === 'Cancel') {
+                    await prisma.session.delete({ where: { phone: from } });
+                    await sendWhatsAppButtons(from, "❌ Booking cancelled. You can start over by typing 'Hi' or click below.", ["Book Appointment"]);
+                } else {
+                    await sendWhatsAppButtons(from, "Please confirm or cancel your booking using the buttons below 👇", ["Confirm Booking", "Cancel"]);
+                }
                 break;
             }
 
