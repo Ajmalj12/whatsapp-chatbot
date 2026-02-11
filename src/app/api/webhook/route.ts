@@ -41,6 +41,25 @@ export async function POST(req: Request) {
         });
 
         if (activeTicket) {
+            // Special case: If user clicks "Book Appointment" button, close ticket and start booking
+            if (text === 'Book Appointment') {
+                console.log(`[Webhook] User clicked Book Appointment during active ticket. Closing ticket and starting booking flow.`);
+                await prisma.supportTicket.update({
+                    where: { id: activeTicket.id },
+                    data: { status: 'RESOLVED' }
+                });
+                // Delete session to start fresh
+                if (session) {
+                    await prisma.session.delete({ where: { phone: from } });
+                }
+                // Create new session for booking
+                session = await prisma.session.create({
+                    data: { phone: from, currentStep: 'LANGUAGE_SELECTION', data: '{}' },
+                });
+                await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
+                return NextResponse.json({ status: 'ok' });
+            }
+
             console.log(`[Webhook] Active ticket found for ${from}. Appending message.`);
             await prisma.ticketMessage.create({
                 data: {
@@ -52,15 +71,15 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'ok' });
         }
 
-        // 2. GLOBAL RESET: Allow starting over at any time
+        // 2. GLOBAL RESET / BOOK APPOINTMENT: Allow starting over or booking at any time
         const cleanText = text.toLowerCase().trim();
-        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText)) {
-            console.log(`[Webhook] Global reset triggered for ${from}`);
+        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText) || text === 'Book Appointment') {
+            console.log(`[Webhook] Global reset/booking triggered for ${from}`);
             if (session) {
                 await prisma.session.delete({ where: { phone: from } });
             }
             session = await prisma.session.create({
-                data: { phone: from, currentStep: 'LANGUAGE_SELECTION' },
+                data: { phone: from, currentStep: 'LANGUAGE_SELECTION', data: '{}' },
             });
             await sendWhatsAppButtons(from, "Welcome to ABC Hospital! Please select your language 👇", ["English", "മലയാളം"]);
             return NextResponse.json({ status: 'ok' });
