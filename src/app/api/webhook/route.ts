@@ -951,7 +951,16 @@ export async function POST(req: Request) {
                 if (interactiveId) {
                     return NextResponse.json({ status: 'ok' });
                 }
-                const finalAgeData = { ...currentData, patientAge: text };
+
+                // Validate age is numeric
+                const ageText = text.trim();
+                const ageNum = parseInt(ageText);
+                if (!/^\d+$/.test(ageText) || ageNum < 1 || ageNum > 99) {
+                    await sendWhatsAppMessage(from, "❌ Invalid age format. Please enter a valid age (number only):");
+                    return NextResponse.json({ status: 'ok' });
+                }
+
+                const finalAgeData = { ...currentData, patientAge: ageText };
                 const doc = await prisma.doctor.findUnique({ where: { id: finalAgeData.doctorId } });
                 const slot = await prisma.availability.findUnique({ where: { id: finalAgeData.availabilityId } });
 
@@ -964,7 +973,7 @@ export async function POST(req: Request) {
                     },
                 });
 
-                const summaryMsg = `📋 *Booking Summary*\n\nPatient: ${finalAgeData.patientName}\nAge: ${text}\nDoctor: ${doc?.name}\nDate: ${new Date(slot?.startTime!).toLocaleDateString()}\nTime: ${new Date(slot?.startTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}\n\nPlease confirm your booking 👇`;
+                const summaryMsg = `📋 *Booking Summary*\n\nPatient: ${finalAgeData.patientName}\nAge: ${ageText}\nDoctor: ${doc?.name}\nDate: ${new Date(slot?.startTime!).toLocaleDateString()}\nTime: ${new Date(slot?.startTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}\n\nPlease confirm your booking 👇`;
 
                 await sendWhatsAppButtons(from, summaryMsg, ["Confirm Booking", "Cancel"]);
                 break;
