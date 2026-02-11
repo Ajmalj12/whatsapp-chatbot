@@ -315,7 +315,8 @@ export async function POST(req: Request) {
                     let mentionedDept = allDepartments.find(d => {
                         const deptName = d.name.toLowerCase();
                         const input = text.toLowerCase();
-                        if (input.includes(deptName)) return true;
+                        const regex = new RegExp(`\\b${deptName}\\b`, 'i');
+                        if (regex.test(input)) return true;
                         return false;
                     });
 
@@ -349,46 +350,30 @@ export async function POST(req: Request) {
                         return NextResponse.json({ status: 'ok' });
                     }
 
-                    if (doctors.length > 10) {
-                        const departments = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'DEPARTMENT_SELECTION' },
-                        });
+                    // Mandatory department selection
+                    const departmentsList = await prisma.department.findMany({ 
+                        where: { active: true }, 
+                        orderBy: { displayOrder: 'asc' } 
+                    });
 
-                        await sendWhatsAppList(
-                            from,
-                            "Please choose a department first 👇",
-                            "Select Department",
-                            [{
-                                title: "Departments",
-                                rows: departments.slice(0, 10).map((dept: any) => ({
-                                    id: `dept_${dept.id}`,
-                                    title: dept.name,
-                                    description: dept.description?.slice(0, 72)
-                                }))
-                            }]
-                        );
-                    } else {
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'DOCTOR_SELECTION' },
-                        });
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'DEPARTMENT_SELECTION' },
+                    });
 
-                        await sendWhatsAppList(
-                            from,
-                            "Please choose a doctor 👇",
-                            "Select Doctor",
-                            [{
-                                title: "Available Doctors",
-                                rows: doctors.slice(0, 10).map((d: any) => ({
-                                    id: `doc_${d.id}`,
-                                    title: d.name,
-                                    description: d.department
-                                }))
-                            }]
-                        );
-                    }
+                    await sendWhatsAppList(
+                        from,
+                        "Please choose a department first 👇",
+                        "Select Department",
+                        [{
+                            title: "Departments",
+                            rows: departmentsList.slice(0, 10).map((dept: any) => ({
+                                id: `dept_${dept.id}`,
+                                title: dept.name,
+                                description: dept.description?.slice(0, 72)
+                            }))
+                        }]
+                    );
                 } else if (text.includes('know more') || text.includes('Need')) {
                     await prisma.session.update({
                         where: { phone: from },
@@ -420,7 +405,9 @@ export async function POST(req: Request) {
                     let mentionedDept = allDepartments.find(d => {
                         const deptName = d.name.toLowerCase();
                         const input = text.toLowerCase();
-                        if (input.includes(deptName)) return true;
+                        // Use whole word matching to avoid "ent" in "appointment"
+                        const regex = new RegExp(`\\b${deptName}\\b`, 'i');
+                        if (regex.test(input)) return true;
                         return false;
                     });
 
@@ -454,46 +441,30 @@ export async function POST(req: Request) {
                         return NextResponse.json({ status: 'ok' });
                     }
 
-                    if (doctors.length > 10) {
-                        const departments = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'DEPARTMENT_SELECTION' },
-                        });
+                    // Mandatory department selection
+                    const departmentsList = await prisma.department.findMany({ 
+                        where: { active: true }, 
+                        orderBy: { displayOrder: 'asc' } 
+                    });
 
-                        await sendWhatsAppList(
-                            from,
-                            "Please choose a department first 👇",
-                            "Select Department",
-                            [{
-                                title: "Departments",
-                                rows: departments.slice(0, 10).map((dept: any) => ({
-                                    id: `dept_${dept.id}`,
-                                    title: dept.name,
-                                    description: dept.description?.slice(0, 72)
-                                }))
-                            }]
-                        );
-                    } else {
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'DOCTOR_SELECTION' },
-                        });
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'DEPARTMENT_SELECTION' },
+                    });
 
-                        await sendWhatsAppList(
-                            from,
-                            "Please choose a doctor 👇",
-                            "Select Doctor",
-                            [{
-                                title: "Available Doctors",
-                                rows: doctors.slice(0, 10).map((d: any) => ({
-                                    id: `doc_${d.id}`,
-                                    title: d.name,
-                                    description: d.department
-                                }))
-                            }]
-                        );
-                    }
+                    await sendWhatsAppList(
+                        from,
+                        "Please choose a department first 👇",
+                        "Select Department",
+                        [{
+                            title: "Departments",
+                            rows: departmentsList.slice(0, 10).map((dept: any) => ({
+                                id: `dept_${dept.id}`,
+                                title: dept.name,
+                                description: dept.description?.slice(0, 72)
+                            }))
+                        }]
+                    );
                 } else {
                     // AI Reply with dynamic context (no need to pass static context)
                     const aiReply = await getAIResponse(text);
