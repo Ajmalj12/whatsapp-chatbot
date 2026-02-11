@@ -73,7 +73,11 @@ export async function POST(req: Request) {
 
         // 2. GLOBAL RESET / BOOK APPOINTMENT: Allow starting over or booking at any time
         const cleanText = text.toLowerCase().trim();
-        if (['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText) || text === 'Book Appointment') {
+        const isBookingCommand = text === 'Book Appointment';
+        const isResetCommand = ['hi', 'hello', 'menu', 'reset', 'start', 'restart', '0'].includes(cleanText);
+
+        // Only reset for "Book Appointment" if NOT already in MAIN_MENU (to avoid loop)
+        if (isResetCommand || (isBookingCommand && session?.currentStep !== 'MAIN_MENU')) {
             console.log(`[Webhook] Global reset/booking triggered for ${from}`);
             if (session) {
                 await prisma.session.delete({ where: { phone: from } });
