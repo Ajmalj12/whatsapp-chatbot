@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendWhatsAppMessage, sendWhatsAppButtons } from '@/lib/whatsapp';
 import { revalidatePath } from 'next/cache';
 
 export async function getOpenTickets() {
@@ -21,7 +21,8 @@ export async function getOpenTickets() {
 export async function replyToTicket(ticketId: string, userPhone: string, message: string) {
     try {
         // 1. Send WhatsApp message
-        await sendWhatsAppMessage(userPhone, message);
+        // 1. Send WhatsApp message with button
+        await sendWhatsAppButtons(userPhone, message, ["Book Appointment"]);
 
         // 2. Add message to database
         await prisma.ticketMessage.create({

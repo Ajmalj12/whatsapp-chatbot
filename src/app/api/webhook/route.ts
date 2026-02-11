@@ -502,7 +502,7 @@ export async function POST(req: Request) {
                         });
 
                         // Send escalation message
-                        await sendWhatsAppMessage(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻");
+                        await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
                     } else {
                         await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
                     }
