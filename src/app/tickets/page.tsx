@@ -1,31 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getOpenTickets, resolveTicket } from '../actions/ticket';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
+import { getOpenTickets, replyToTicket, resolveTicket } from '../actions/ticket';
 import AdminLayout from '@/components/AdminLayout';
+
+interface TicketMessage {
+    id: string;
+    sender: string;
+    content: string;
+    createdAt: Date;
+}
 
 interface Ticket {
     id: string;
     phone: string;
     query: string;
+    status: string;
     createdAt: Date;
+    messages: TicketMessage[];
 }
 
 export default function TicketsPage() {
     const [tickets, setTickets] = useState<Ticket[]>([]);
+    const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
     const [loading, setLoading] = useState(true);
-    const [replyingTo, setReplyingTo] = useState<string | null>(null);
     const [replyMessage, setReplyMessage] = useState('');
     const [sending, setSending] = useState(false);
-    const router = useRouter();
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         fetchTickets();
-        // Poll for new tickets every 30 seconds
-        const interval = setInterval(fetchTickets, 30000);
+        const interval = setInterval(fetchTickets, 10000); // Poll every 10s for chat
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        if (selectedTicket) {
+            // Update selected ticket from the fresh list to show new messages
+            const updated = tickets.find(t => t.id === selectedTicket.id);
+            if (updated) setSelectedTicket(updated);
+            scrollToBottom();
+        }
+    }, [tickets, selectedTicket?.id]);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     const fetchTickets = async () => {
         const res = await getOpenTickets();
@@ -35,96 +55,148 @@ export default function TicketsPage() {
         setLoading(false);
     };
 
-    const handleReply = async (ticket: Ticket) => {
-        if (!replyMessage.trim()) return;
+    const handleSend = async () => {
+        if (!selectedTicket || !replyMessage.trim()) return;
         setSending(true);
 
-        const res = await resolveTicket(ticket.id, ticket.phone, replyMessage);
+        const res = await replyToTicket(selectedTicket.id, selectedTicket.phone, replyMessage);
 
         if (res.success) {
-            setReplyingTo(null);
             setReplyMessage('');
-            fetchTickets(); // Refresh list
+            fetchTickets();
         } else {
-            alert('Failed to send reply');
+            alert('Failed to send message');
         }
         setSending(false);
     };
 
+    const handleResolve = async () => {
+        if (!selectedTicket || !confirm('Are you sure you want to resolve and close this ticket?')) return;
+
+        const res = await resolveTicket(selectedTicket.id);
+        if (res.success) {
+            setSelectedTicket(null);
+            fetchTickets();
+        } else {
+            alert('Failed to resolve ticket');
+        }
+    };
+
     return (
         <AdminLayout>
-            <div className="p-6 max-w-4xl mx-auto">
-                <h1 className="text-2xl font-bold mb-6 text-gray-800">Support Tickets (Escalations)</h1>
-
-                {loading ? (
-                    <p>Loading tickets...</p>
-                ) : tickets.length === 0 ? (
-                    <div className="bg-green-50 p-4 rounded text-green-700">
-                        ✅ No open tickets. All caught up!
+            <div className="flex h-[calc(100vh-64px)] bg-gray-100">
+                {/* Sidebar */}
+                <div className="w-1/3 border-r bg-white flex flex-col">
+                    <div className="p-4 border-b bg-gray-50">
+                        <h2 className="font-bold text-lg text-gray-700">Open Tickets</h2>
                     </div>
-                ) : (
-                    <div className="space-y-4">
-                        {tickets.map((ticket) => (
-                            <div key={ticket.id} className="bg-white border rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <span className="font-semibold text-blue-600">{ticket.phone}</span>
-                                        <span className="text-gray-400 text-sm ml-2">
-                                            {new Date(ticket.createdAt).toLocaleString()}
-                                        </span>
+                    <div className="flex-1 overflow-y-auto">
+                        {loading ? (
+                            <p className="p-4 text-gray-500">Loading...</p>
+                        ) : tickets.length === 0 ? (
+                            <p className="p-4 text-gray-500">No open tickets.</p>
+                        ) : (
+                            tickets.map(ticket => (
+                                <div
+                                    key={ticket.id}
+                                    onClick={() => setSelectedTicket(ticket)}
+                                    className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${selectedTicket?.id === ticket.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                                >
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="font-semibold text-gray-800">{ticket.phone}</span>
+                                        <span className="text-xs text-gray-500">{new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
-                                    <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">
-                                        OPEN
-                                    </span>
+                                    <p className="text-sm text-gray-600 truncate">
+                                        {ticket.messages.length > 0
+                                            ? ticket.messages[ticket.messages.length - 1].content
+                                            : ticket.query}
+                                    </p>
                                 </div>
+                            ))
+                        )}
+                    </div>
+                </div>
 
-                                <div className="bg-gray-50 p-3 rounded mb-3 text-gray-700">
-                                    <strong>User asked:</strong> "{ticket.query}"
+                {/* Chat Window */}
+                <div className="flex-1 flex flex-col bg-gray-50">
+                    {selectedTicket ? (
+                        <>
+                            {/* Header */}
+                            <div className="p-4 bg-white border-b flex justify-between items-center shadow-sm">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">{selectedTicket.phone}</h3>
+                                    <span className="text-xs text-green-600 font-medium">Active Now</span>
                                 </div>
+                                <button
+                                    onClick={handleResolve}
+                                    className="bg-green-100 text-green-700 px-3 py-1.5 rounded text-sm hover:bg-green-200 transition-colors"
+                                >
+                                    ✓ Resolve & Close
+                                </button>
+                            </div>
 
-                                {replyingTo === ticket.id ? (
-                                    <div className="mt-2">
-                                        <textarea
-                                            className="w-full border rounded p-2 mb-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                                            rows={3}
-                                            placeholder="Type your reply here..."
-                                            value={replyMessage}
-                                            onChange={(e) => setReplyMessage(e.target.value)}
-                                            disabled={sending}
-                                        />
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => handleReply(ticket)}
-                                                disabled={sending || !replyMessage.trim()}
-                                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-                                            >
-                                                {sending ? 'Sending...' : 'Send Reply'}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setReplyingTo(null);
-                                                    setReplyMessage('');
-                                                }}
-                                                disabled={sending}
-                                                className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
-                                            >
-                                                Cancel
-                                            </button>
+                            {/* Messages */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {/* Show initial query as the first message if no messages exist yet, 
+                                    or relies on webhook creating the first message. 
+                                    If webhook creates it, we just map messages. 
+                                */}
+                                {selectedTicket.messages.map((msg) => (
+                                    <div
+                                        key={msg.id}
+                                        className={`flex ${msg.sender === 'ADMIN' ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div
+                                            className={`max-w-[70%] p-3 rounded-lg shadow-sm ${msg.sender === 'ADMIN'
+                                                ? 'bg-blue-600 text-white rounded-br-none'
+                                                : 'bg-white text-gray-800 border rounded-bl-none'
+                                                }`}
+                                        >
+                                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                            <span className={`text-[10px] block mt-1 ${msg.sender === 'ADMIN' ? 'text-blue-100' : 'text-gray-400'}`}>
+                                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
                                         </div>
                                     </div>
-                                ) : (
-                                    <button
-                                        onClick={() => setReplyingTo(ticket.id)}
-                                        className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                                    >
-                                        Reply & Resolve
-                                    </button>
-                                )}
+                                ))}
+                                <div ref={messagesEndRef} />
                             </div>
-                        ))}
-                    </div>
-                )}
+
+                            {/* Input */}
+                            <div className="p-4 bg-white border-t">
+                                <div className="flex gap-2">
+                                    <textarea
+                                        value={replyMessage}
+                                        onChange={(e) => setReplyMessage(e.target.value)}
+                                        placeholder="Type your reply..."
+                                        className="flex-1 border rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-12 md:h-14"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSend();
+                                            }
+                                        }}
+                                        disabled={sending}
+                                    />
+                                    <button
+                                        onClick={handleSend}
+                                        disabled={sending || !replyMessage.trim()}
+                                        className="bg-blue-600 text-white px-6 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                                    >
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-gray-400 flex-col">
+                            <span className="text-4xl mb-2">💬</span>
+                            <p>Select a ticket to view the conversation</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </AdminLayout>
     );
 }
+

@@ -77,4 +77,14 @@ model SupportTicket {
   status    String   @default("OPEN") // OPEN, RESOLVED
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  messages  TicketMessage[]
+}
+
+model TicketMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  sender    String   // USER, ADMIN
+  content   String
+  createdAt DateTime @default(now())
 }

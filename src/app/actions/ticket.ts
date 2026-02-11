@@ -8,7 +8,8 @@ export async function getOpenTickets() {
     try {
         const tickets = await prisma.supportTicket.findMany({
             where: { status: 'OPEN' },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { messages: { orderBy: { createdAt: 'asc' } } }
         });
         return { success: true, data: tickets };
     } catch (error) {
@@ -17,12 +18,30 @@ export async function getOpenTickets() {
     }
 }
 
-export async function resolveTicket(ticketId: string, userPhone: string, replyMessage: string) {
+export async function replyToTicket(ticketId: string, userPhone: string, message: string) {
     try {
         // 1. Send WhatsApp message
-        await sendWhatsAppMessage(userPhone, replyMessage);
+        await sendWhatsAppMessage(userPhone, message);
 
-        // 2. Update ticket status
+        // 2. Add message to database
+        await prisma.ticketMessage.create({
+            data: {
+                ticketId,
+                sender: 'ADMIN',
+                content: message
+            }
+        });
+
+        revalidatePath('/tickets');
+        return { success: true };
+    } catch (error) {
+        console.error('Error replying to ticket:', error);
+        return { success: false, error: 'Failed to reply' };
+    }
+}
+
+export async function resolveTicket(ticketId: string) {
+    try {
         await prisma.supportTicket.update({
             where: { id: ticketId },
             data: { status: 'RESOLVED' }

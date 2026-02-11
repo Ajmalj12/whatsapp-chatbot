@@ -49,6 +49,23 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'ok' });
         }
 
+        // 2. CHECK FOR ACTIVE TICKET (Escalation Mode)
+        const activeTicket = await prisma.supportTicket.findFirst({
+            where: { phone: from, status: 'OPEN' }
+        });
+
+        if (activeTicket) {
+            console.log(`[Webhook] Active ticket found for ${from}. Appending message.`);
+            await prisma.ticketMessage.create({
+                data: {
+                    ticketId: activeTicket.id,
+                    sender: 'USER',
+                    content: text
+                }
+            });
+            return NextResponse.json({ status: 'ok' });
+        }
+
         if (!session) {
             console.log(`[Webhook] New session for ${from}`);
             session = await prisma.session.create({
@@ -474,7 +491,13 @@ export async function POST(req: Request) {
                             data: {
                                 phone: from,
                                 query: text,
-                                status: 'OPEN'
+                                status: 'OPEN',
+                                messages: {
+                                    create: {
+                                        sender: 'USER',
+                                        content: text
+                                    }
+                                }
                             }
                         });
 
