@@ -459,11 +459,14 @@ export async function POST(req: Request) {
                 }
 
                 const aiReply = await getAIResponse(text, undefined, session.language);
-                if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                const trimmed = aiReply.trim();
+                if (trimmed === 'CONNECT_AGENT') {
                     await prisma.supportTicket.create({
                         data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                     });
                     await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
+                } else if (trimmed === 'UNKNOWN_QUERY') {
+                    await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                 } else {
                     const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
                     if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
@@ -486,7 +489,13 @@ export async function POST(req: Request) {
                     await sendWhatsAppMessage(from, "Which doctor would you like to book? Please type the doctor's name (e.g. Dr. Rahul).");
                 } else {
                     const aiReply = await getAIResponse(text, undefined, session.language);
-                    if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                    const trimmed = aiReply.trim();
+                    if (trimmed === 'CONNECT_AGENT') {
+                        await prisma.supportTicket.create({
+                            data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
+                        });
+                        await sendWhatsAppButtons(from, "I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
+                    } else if (trimmed === 'UNKNOWN_QUERY') {
                         await sendWhatsAppMessage(from, "Which doctor would you like to book? Please type the doctor's name.");
                     } else {
                         const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
@@ -615,11 +624,14 @@ export async function POST(req: Request) {
                             data: { currentStep: 'CHAT', data: '{}' },
                         });
                         const aiReply = await getAIResponse(text, undefined, session.language);
-                        if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                        const trimmed = aiReply.trim();
+                        if (trimmed === 'CONNECT_AGENT') {
                             await prisma.supportTicket.create({
                                 data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
+                        } else if (trimmed === 'UNKNOWN_QUERY') {
+                            await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                         } else {
                             const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
                             if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
@@ -733,11 +745,14 @@ export async function POST(req: Request) {
                             data: { currentStep: 'CHAT', data: '{}' },
                         });
                         const aiReply = await getAIResponse(text, undefined, session.language);
-                        if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                        const trimmed = aiReply.trim();
+                        if (trimmed === 'CONNECT_AGENT') {
                             await prisma.supportTicket.create({
                                 data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
+                        } else if (trimmed === 'UNKNOWN_QUERY') {
+                            await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                         } else {
                             const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
                             if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
