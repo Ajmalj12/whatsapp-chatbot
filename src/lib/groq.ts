@@ -93,6 +93,10 @@ export async function getAIResponse(userQuery: string, staticContext?: string[],
         return "I'm sorry, my AI brain is currently offline (API Key missing). Please contact support.";
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-start',message:'Groq request start',data:{userQueryFirst80: (userQuery||'').slice(0,80)},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+
     try {
         // Combine dynamic and static context
         const dynamicContext = await getDynamicContext();
@@ -153,8 +157,15 @@ ${context}
             model: 'llama-3.1-8b-instant',
         });
 
-        return completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
-    } catch (error) {
+        const rawContent = completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-ok',message:'Groq response ok',data:{rawContentFirst250: (rawContent||'').slice(0,250)},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        return rawContent;
+    } catch (error: unknown) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-catch',message:'GROQ_CATCH',data:{errorMessage: (error as Error)?.message || String(error)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         console.error("Groq API Error:", error);
         return "I'm having trouble connecting to my AI service right now.";
     }

@@ -102,6 +102,10 @@ export async function POST(req: Request) {
 
         const currentData = JSON.parse(session.data || '{}');
 
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:session-loaded',message:'Session loaded',data:{from, sessionPhone: session?.phone, currentStep: session?.currentStep, dataKeys: Object.keys(currentData)},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+        // #endregion
+
         // Helper to handle doctor selection (shared between menu shortcut and explicit selection)
         const handleDoctorSelection = async (from: string, text: string, interactiveId: string, selectedDoctor: any, currentData: any) => {
             console.log(`[Webhook] Processing selection for doctor: ${selectedDoctor.name}`);
@@ -460,8 +464,14 @@ export async function POST(req: Request) {
                     break;
                 }
 
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:CHAT-before-ai',message:'CHAT before getAIResponse',data:{from, textFirst80: (text||'').slice(0,80)},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
                 const aiReply = await getAIResponse(text, undefined, session.language);
                 const trimmed = aiReply.trim();
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:CHAT-after-ai',message:'CHAT after getAIResponse',data:{from, aiReplyFirst250: (aiReply||'').slice(0,250), trimmed: trimmed.slice(0,80), isUnknown: trimmed==='UNKNOWN_QUERY', isConnect: trimmed==='CONNECT_AGENT'},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
                 if (trimmed === 'CONNECT_AGENT') {
                     await prisma.supportTicket.create({
                         data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
