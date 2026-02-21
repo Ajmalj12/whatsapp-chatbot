@@ -93,10 +93,6 @@ export async function getAIResponse(userQuery: string, staticContext?: string[],
         return "I'm sorry, my AI brain is currently offline (API Key missing). Please contact support.";
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-start',message:'Groq request start',data:{userQueryFirst80: (userQuery||'').slice(0,80)},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-
     try {
         // Combine dynamic and static context
         const dynamicContext = await getDynamicContext();
@@ -135,6 +131,7 @@ Rules:
 4. Be concise and natural.
 5. If the user explicitly asks to connect to an agent, human, receptionist, or support (e.g. "connect me to agent", "speak to human", "talk to support"), reply with exactly: "CONNECT_AGENT". Do NOT use CONNECT_AGENT for other questions.
 6. If the user's question is NOT covered by the provided context or knowledge base, reply with exactly: "UNKNOWN_QUERY". Do not apologize or make up an answer. Do NOT use UNKNOWN_QUERY when the user is asking (in English, Manglish, or Malayalam) about doctor availability, appointments, greetings, timing, lab, or booking (e.g. "Hi", "who is available today?", "Innu eathokke drs available aanu?", "book cheyyam"); understand intent and answer from the data.
+7. For questions about clinic location, address, or "where is your place" (in any language, e.g. "Ningalude sthalam ewde anu", "where is your place"): if the Knowledge Base does NOT list an address or location, reply with exactly: "UNKNOWN_QUERY". Do NOT invent any city, area, or address (e.g. never say Kollam or any place name not in the data).
 
 When users ask about doctor availability (English, Manglish, or Malayalam — treat all the same): e.g. "who is available today?", "who all are available?", "Innu eathokke drs available aanu?", "innu aarokke available?", "aarokke available aanu?", "naale aar available?", "Is Dr X available today?", "Dr X indo?", "Dr X innu undo?":
 - Use the "Doctor availability and slots" and department data below. Do NOT answer with only clinic opening hours.
@@ -158,14 +155,8 @@ ${context}
         });
 
         const rawContent = completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-ok',message:'Groq response ok',data:{rawContentFirst250: (rawContent||'').slice(0,250)},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return rawContent;
     } catch (error: unknown) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'groq.ts:getAIResponse-catch',message:'GROQ_CATCH',data:{errorMessage: (error as Error)?.message || String(error)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         console.error("Groq API Error:", error);
         return "I'm having trouble connecting to my AI service right now.";
     }

@@ -31,6 +31,7 @@ export async function POST(req: Request) {
         }
         console.log(`[Webhook] Extracted Text: "${text}", ID: "${interactiveId}"`);
 
+        // Session is per user: each phone number (from) has its own session; no cross-user state.
         let session = await prisma.session.findUnique({
             where: { phone: from },
         });
@@ -101,10 +102,6 @@ export async function POST(req: Request) {
         }
 
         const currentData = JSON.parse(session.data || '{}');
-
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:session-loaded',message:'Session loaded',data:{from, sessionPhone: session?.phone, currentStep: session?.currentStep, dataKeys: Object.keys(currentData)},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
-        // #endregion
 
         // Helper to handle doctor selection (shared between menu shortcut and explicit selection)
         const handleDoctorSelection = async (from: string, text: string, interactiveId: string, selectedDoctor: any, currentData: any) => {
@@ -464,20 +461,19 @@ export async function POST(req: Request) {
                     break;
                 }
 
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:CHAT-before-ai',message:'CHAT before getAIResponse',data:{from, textFirst80: (text||'').slice(0,80)},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-                // #endregion
                 const aiReply = await getAIResponse(text, undefined, session.language);
                 const trimmed = aiReply.trim();
-                // #region agent log
-                fetch('http://127.0.0.1:7243/ingest/651b18ca-e3cb-4b60-a087-5828c9c839fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'webhook/route.ts:CHAT-after-ai',message:'CHAT after getAIResponse',data:{from, aiReplyFirst250: (aiReply||'').slice(0,250), trimmed: trimmed.slice(0,80), isUnknown: trimmed==='UNKNOWN_QUERY', isConnect: trimmed==='CONNECT_AGENT'},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-                // #endregion
-                if (trimmed === 'CONNECT_AGENT') {
+                // Treat malformed model output (e.g. "... - unknown_query" or reply containing "unknown_query") as UNKNOWN_QUERY so we send fallback, not raw text
+                const treatAsUnknown = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
+                // Safety: do not send hallucinated location (e.g. Kollam) to user
+                const hasHallucinatedLocation = /\bKollam\b/i.test(aiReply);
+                const useFallback = treatAsUnknown || hasHallucinatedLocation;
+                if (trimmed === 'CONNECT_AGENT' && !useFallback) {
                     await prisma.supportTicket.create({
                         data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                     });
                     await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
-                } else if (trimmed === 'UNKNOWN_QUERY') {
+                } else if (useFallback) {
                     await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                 } else {
                     const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
@@ -502,12 +498,14 @@ export async function POST(req: Request) {
                 } else {
                     const aiReply = await getAIResponse(text, undefined, session.language);
                     const trimmed = aiReply.trim();
-                    if (trimmed === 'CONNECT_AGENT') {
+                    const treatAsUnknownAv = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
+                    const useFallbackAv = treatAsUnknownAv || /\bKollam\b/i.test(aiReply);
+                    if (trimmed === 'CONNECT_AGENT' && !useFallbackAv) {
                         await prisma.supportTicket.create({
                             data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                         });
                         await sendWhatsAppButtons(from, "I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
-                    } else if (trimmed === 'UNKNOWN_QUERY') {
+                    } else if (useFallbackAv) {
                         await sendWhatsAppMessage(from, "Which doctor would you like to book? Please type the doctor's name.");
                     } else {
                         const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
@@ -637,12 +635,14 @@ export async function POST(req: Request) {
                         });
                         const aiReply = await getAIResponse(text, undefined, session.language);
                         const trimmed = aiReply.trim();
-                        if (trimmed === 'CONNECT_AGENT') {
+                        const treatAsUnknownDept = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
+                        const useFallbackDept = treatAsUnknownDept || /\bKollam\b/i.test(aiReply);
+                        if (trimmed === 'CONNECT_AGENT' && !useFallbackDept) {
                             await prisma.supportTicket.create({
                                 data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
-                        } else if (trimmed === 'UNKNOWN_QUERY') {
+                        } else if (useFallbackDept) {
                             await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                         } else {
                             const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
@@ -758,12 +758,14 @@ export async function POST(req: Request) {
                         });
                         const aiReply = await getAIResponse(text, undefined, session.language);
                         const trimmed = aiReply.trim();
-                        if (trimmed === 'CONNECT_AGENT') {
+                        const treatAsUnknownDoc = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
+                        const useFallbackDoc = treatAsUnknownDoc || /\bKollam\b/i.test(aiReply);
+                        if (trimmed === 'CONNECT_AGENT' && !useFallbackDoc) {
                             await prisma.supportTicket.create({
                                 data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
-                        } else if (trimmed === 'UNKNOWN_QUERY') {
+                        } else if (useFallbackDoc) {
                             await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
                         } else {
                             const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
