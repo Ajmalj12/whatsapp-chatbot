@@ -133,11 +133,12 @@ export async function POST(req: Request) {
                     });
 
                     if (slotsForDate.length > 0) {
+                        const slotsPayload = slotsForDate.slice(0, 10).map((s: any) => ({ id: s.id, startTime: s.startTime }));
                         await prisma.session.update({
                             where: { phone: from },
                             data: {
-                                currentStep: 'TIME_SELECTION', // Skip DATE_SELECTION
-                                data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, selectedDate: parsedTimeInMessage.date })
+                                currentStep: 'TIME_SELECTION',
+                                data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, selectedDate: parsedTimeInMessage.date, availableSlots: slotsPayload })
                             },
                         });
 
@@ -233,11 +234,12 @@ export async function POST(req: Request) {
                 });
 
                 if (slotsForDate.length > 0) {
+                    const slotsPayload = slotsForDate.slice(0, 10).map((s: any) => ({ id: s.id, startTime: s.startTime }));
                     await prisma.session.update({
                         where: { phone: from },
                         data: {
                             currentStep: 'TIME_SELECTION',
-                            data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, selectedDate: prefilledDate })
+                            data: JSON.stringify({ ...currentData, doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, selectedDate: prefilledDate, availableSlots: slotsPayload })
                         },
                     });
 
@@ -950,9 +952,10 @@ export async function POST(req: Request) {
 
                 let matchedSltShortcut = null;
                 if (interactiveId.startsWith('slot_')) {
-                    const slotIdx = parseInt(interactiveId.replace('slot_', ''));
-                    matchedSltShortcut = slotsData[slotIdx];
-                } else {
+                    const slotId = interactiveId.replace('slot_', '');
+                    matchedSltShortcut = slotsData.find((s: any) => String(s.id) === String(slotId));
+                }
+                if (!matchedSltShortcut) {
                     matchedSltShortcut = slotsData.find((slot: any) => {
                         const slotTime = new Date(slot.startTime);
                         const tStr = slotTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -970,7 +973,7 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSltShortcut.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    await sendWhatsAppMessage(from, "Please select one of the available time slots.");
+                    await sendWhatsAppMessage(from, "Tap a time from the list above, or type the time (e.g. 11:00 AM).");
                 }
                 break;
             }
