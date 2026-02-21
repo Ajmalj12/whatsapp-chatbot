@@ -71,12 +71,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'ok' });
         }
 
-        // 2. GLOBAL RESET / BOOK APPOINTMENT: Allow starting over or booking at any time
+        // 2. MESSAGE-FIRST: Greeting or reset always resets to CHAT and sends welcome (human-like)
         const cleanText = text.toLowerCase().trim();
-        const isResetCommand = ['menu', 'reset', 'start', 'restart', '0'].includes(cleanText);
+        const GREETING_OR_RESET = /^(hi|hello|hey|hai|hlw|hlo|vanakkam|namaskaram|menu|reset|start|restart|0)$/i;
 
-        if (isResetCommand) {
-            console.log(`[Webhook] Global reset triggered for ${from}`);
+        if (GREETING_OR_RESET.test(cleanText)) {
+            console.log(`[Webhook] Greeting/reset triggered for ${from}, resetting to CHAT`);
             if (session) {
                 await prisma.session.delete({ where: { phone: from } });
             }
@@ -268,7 +268,11 @@ export async function POST(req: Request) {
             });
 
             if (allSlotsForDoc.length === 0) {
-                await sendWhatsAppMessage(from, `Sorry, ${selectedDoctor.name} has no available slots at the moment.`);
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: { currentStep: 'CHAT', data: '{}' },
+                });
+                await sendWhatsAppMessage(from, `Sorry, ${selectedDoctor.name} has no available slots at the moment. You can ask for another doctor or day, or say Hi to start over.`);
                 return NextResponse.json({ status: 'ok' });
             }
 
@@ -600,6 +604,23 @@ export async function POST(req: Request) {
 
                 if (!selectedDeptName) {
                     console.log(`[Webhook] No department matched for "${text}"`);
+                    const looksLikeQuestion = text.includes('?') || text.length > 40 || /\b(innu|eathokke|drs?|indu|doctor|available|today|tomorrow)\b/i.test(cleanText);
+                    if (looksLikeQuestion && !interactiveId.startsWith('dept_')) {
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: { currentStep: 'CHAT', data: '{}' },
+                        });
+                        const aiReply = await getAIResponse(text, undefined, session.language);
+                        if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                            await prisma.supportTicket.create({
+                                data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
+                            });
+                            await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
+                        } else {
+                            await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                        }
+                        return NextResponse.json({ status: 'ok' });
+                    }
                     const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
                     await sendWhatsAppList(
                         from,
@@ -698,16 +719,31 @@ export async function POST(req: Request) {
                 if (selectedDoctor) {
                     return await handleDoctorSelection(from, text, interactiveId, selectedDoctor, currentData);
                 } else {
-                    console.log(`[Webhook] No doctor matched "${text}". Resending list.`);
+                    console.log(`[Webhook] No doctor matched "${text}".`);
+                    const looksLikeQuestion = text.includes('?') || text.length > 40 || /\b(innu|eathokke|drs?|indu|doctor|available|today|tomorrow)\b/i.test(cleanText);
+                    if (looksLikeQuestion && !interactiveId.startsWith('doc_')) {
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: { currentStep: 'CHAT', data: '{}' },
+                        });
+                        const aiReply = await getAIResponse(text, undefined, session.language);
+                        if (aiReply.trim() === 'UNKNOWN_QUERY') {
+                            await prisma.supportTicket.create({
+                                data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
+                            });
+                            await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
+                        } else {
+                            await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                        }
+                        break;
+                    }
                     const doctorsAllList = await prisma.doctor.findMany({ where: { active: true } });
-
                     if (doctorsAllList.length > 10) {
                         const departments = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
                         await prisma.session.update({
                             where: { phone: from },
                             data: { currentStep: 'DEPARTMENT_SELECTION' },
                         });
-
                         await sendWhatsAppList(
                             from,
                             "I couldn't find that doctor. Please choose a department first 👇",
