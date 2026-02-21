@@ -84,7 +84,7 @@ async function getDynamicContext(): Promise<string[]> {
     return contexts;
 }
 
-export async function getAIResponse(userQuery: string, staticContext?: string[]) {
+export async function getAIResponse(userQuery: string, staticContext?: string[], preferredLanguage?: string | null) {
     if (!process.env.GROQ_API_KEY) {
         return "I'm sorry, my AI brain is currently offline (API Key missing). Please contact support.";
     }
@@ -95,7 +95,9 @@ export async function getAIResponse(userQuery: string, staticContext?: string[])
         const allContext = [...dynamicContext, ...(staticContext || [])];
         const context = allContext.join("\n\n");
 
-        const systemPrompt = `You are a helpful, friendly receptionist at ABC Hospital.
+        const languageLine = preferredLanguage ? `\nPreferred reply language: ${preferredLanguage}. Respond in this language when appropriate.` : '';
+        const systemPrompt = `You are a helpful, friendly receptionist at CarePlus Clinic.
+Answer ONLY using the provided Knowledge Base and dynamic context (departments, doctors, availability). Do not invent names, times, or prices. Understand Malayalam and Manglish (Roman script) and respond in the same language when appropriate.${languageLine}
 
 Rules:
 1. NEVER say "According to my knowledge base", "Based on the provided text", or references to "context". Just give the answer directly.

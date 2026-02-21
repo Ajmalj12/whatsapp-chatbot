@@ -42,6 +42,32 @@ async function main() {
             })
         }
     }
+
+    const kbEntries = [
+        { question: 'What are the clinic timings?', answer: "We're open 9 AM – 9 PM." },
+        { question: 'What are your opening hours?', answer: "We're open from 9 AM – 9 PM." },
+        { question: 'Is the clinic open tomorrow?', answer: 'Yes 👍 We\'re open from 9 AM – 9 PM.' },
+        { question: 'Is clinic open tomorrow?', answer: 'Yes 👍 We\'re open from 9 AM – 9 PM.' },
+        { question: 'Full body checkup cost?', answer: '1999 👍 Includes 70+ tests.' },
+        { question: 'How much is full body checkup?', answer: '1999 👍 Includes 70+ tests.' },
+        { question: 'Home sample?', answer: 'Yes. Which date should we schedule?' },
+        { question: 'Do you do home sample collection?', answer: 'Yes. Which date should we schedule?' },
+        { question: 'Tomorrow morning lab sample', answer: 'Booked 👍 Sample pickup tomorrow 7–9 AM.' },
+        { question: 'Lab test tomorrow morning', answer: 'Booked 👍 Sample pickup tomorrow 7–9 AM.' },
+        { question: 'Schedule home sample tomorrow morning', answer: 'Booked 👍 Sample pickup tomorrow 7–9 AM.' },
+        { question: 'Doctor undo?', answer: 'Yes, doctor is available.' },
+        { question: 'Doctor available?', answer: 'Yes, doctor is available.' },
+        { question: 'time eppazha', answer: 'Please check the available slots above, or ask for a specific doctor and date.' },
+        { question: 'What time?', answer: 'Please check the available slots above, or ask for a specific doctor and date.' },
+    ]
+
+    console.log('Seeding knowledge base...')
+    for (const entry of kbEntries) {
+        const existing = await prisma.knowledgeBase.findFirst({ where: { question: entry.question } })
+        if (!existing) {
+            await prisma.knowledgeBase.create({ data: entry })
+        }
+    }
     console.log('Seeding complete.')
 }
 
