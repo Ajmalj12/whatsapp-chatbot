@@ -465,7 +465,9 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
                 } else {
-                    await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                    const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
+                    if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                    else await sendWhatsAppMessage(from, aiReply);
                 }
                 break;
             }
@@ -487,7 +489,9 @@ export async function POST(req: Request) {
                     if (aiReply.trim() === 'UNKNOWN_QUERY') {
                         await sendWhatsAppMessage(from, "Which doctor would you like to book? Please type the doctor's name.");
                     } else {
-                        await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                        const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
+                        if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                        else await sendWhatsAppMessage(from, aiReply);
                     }
                 }
                 break;
@@ -617,7 +621,9 @@ export async function POST(req: Request) {
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
                         } else {
-                            await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                            const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
+                            if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                            else await sendWhatsAppMessage(from, aiReply);
                         }
                         return NextResponse.json({ status: 'ok' });
                     }
@@ -733,7 +739,9 @@ export async function POST(req: Request) {
                             });
                             await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
                         } else {
-                            await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                            const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
+                            if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+                            else await sendWhatsAppMessage(from, aiReply);
                         }
                         break;
                     }

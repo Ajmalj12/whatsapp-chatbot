@@ -26,7 +26,7 @@ async function getDynamicContext(): Promise<string[]> {
             contexts.push(`Available Departments:\n${deptList}`);
         }
 
-        // 2. Doctor availability by department
+        // 2. Doctor availability and slots (use this for "who is available", "Dr X available today?", etc.)
         const doctors = await prisma.doctor.findMany({
             where: { active: true },
             include: {
@@ -51,6 +51,7 @@ async function getDynamicContext(): Promise<string[]> {
         }
 
         // Add department-wise doctor info with detailed slots
+        const doctorAvailabilityLines: string[] = [];
         for (const [dept, deptDoctors] of Object.entries(doctorsByDept)) {
             let deptInfo = `${dept} Department:\n`;
 
@@ -70,7 +71,10 @@ async function getDynamicContext(): Promise<string[]> {
                 deptInfo += `- Dr. ${doc.name}: ${formattedSlots ? formattedSlots : 'No upcoming slots'}\n`;
             });
 
-            contexts.push(deptInfo);
+            doctorAvailabilityLines.push(deptInfo);
+        }
+        if (doctorAvailabilityLines.length > 0) {
+            contexts.push('Doctor availability and slots (use this for "who is available today?", "Dr X available?", etc.):\n' + doctorAvailabilityLines.join('\n'));
         }
 
         // 3. Static knowledge base
@@ -99,17 +103,24 @@ export async function getAIResponse(userQuery: string, staticContext?: string[],
         const systemPrompt = `You are a helpful, friendly receptionist at CarePlus Clinic.
 Answer ONLY using the provided Knowledge Base and dynamic context (departments, doctors, availability). Do not invent names, times, or prices. Understand Malayalam and Manglish (Roman script) and respond in the same language when appropriate.${languageLine}
 
+Anti-hallucination rules:
+- Do NOT invent any information: no locations, addresses, city names, or facts not listed in the provided context.
+- If the question is not answerable from the provided data, reply with exactly: "UNKNOWN_QUERY". Do not make up an answer.
+
 Rules:
 1. NEVER say "According to my knowledge base", "Based on the provided text", or references to "context". Just give the answer directly.
-2. When mentioning availability, group consecutive slots into ranges (e.g., say "Dr. Smith is available from 10:00 AM to 12:00 PM" instead of listing "10:00, 10:30, 11:00...").
-3. Be concise and natural.
-4. If the user asks to speak to a human, receptionist, or support, reply with exactly: "UNKNOWN_QUERY".
-5. If the user's question is NOT covered by the provided context or knowledge base, reply with exactly: "UNKNOWN_QUERY". Do not apologize or make up an answer.
+2. Always write the clinic name as "CarePlus Clinic" in English in every response, regardless of the language of the rest of the reply (e.g. even when replying in Malayalam).
+3. When mentioning availability, group consecutive slots into ranges (e.g., say "Dr. Smith is available from 10:00 AM to 12:00 PM" instead of listing "10:00, 10:30, 11:00...").
+4. Be concise and natural.
+5. If the user asks to speak to a human, receptionist, or support, reply with exactly: "UNKNOWN_QUERY".
+6. If the user's question is NOT covered by the provided context or knowledge base, reply with exactly: "UNKNOWN_QUERY". Do not apologize or make up an answer.
 
-When users ask about doctor availability:
-- Check the parsed department/doctor info.
-- State the specific available time ranges for the requested date.
-- Suggest booking.
+When users ask about doctor availability (e.g. "who is available today?", "who all are available?", "aarokke available?", "innu aarokke available aanu?", "Is Dr X available today?", "Dr X indo?"):
+- Use the "Doctor availability and slots" section below: list the doctors and their time slots for the requested date (today/tomorrow). Do NOT answer with only clinic opening hours.
+- For "Is Dr [name] available today?" find that doctor in the context and state their slots for the requested date, or "No upcoming slots" if none. Do NOT invent or use unrelated information (e.g. location).
+- Prefer the doctor/slot data over generic KB answers when the user is asking about who is available or which doctor has slots.
+
+Use ONLY the data below. Do not add any information that is not listed here.
 
 Knowledge Base:
 ${context}
