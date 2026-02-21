@@ -11,7 +11,7 @@ export default function Layout({ children, fullWidth = false }: { children: Reac
                                 <span className="text-xl font-bold">+</span>
                             </div>
                             <span className="text-xl font-bold tracking-tight text-slate-900">
-                                ABC <span className="text-emerald-600">Hospital</span>
+                                CarePlus <span className="text-emerald-600">Clinic</span>
                             </span>
                         </div>
                         <div className="hidden md:block">

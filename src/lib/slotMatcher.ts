@@ -146,6 +146,37 @@ export async function findNextAvailableSlot(doctorId: string): Promise<{
 }
 
 /**
+ * Get doctors who have at least one unbooked slot on the given date.
+ * Used for "tomorrow available?" → list doctor names.
+ */
+export async function getDoctorsWithSlotsOnDate(date: Date): Promise<{ id: string; name: string; department: string }[]> {
+    const dayStart = startOfDay(date);
+    const dayEnd = endOfDay(date);
+
+    const slots = await prisma.availability.findMany({
+        where: {
+            isBooked: false,
+            startTime: {
+                gte: dayStart,
+                lte: dayEnd
+            }
+        },
+        include: { doctor: true },
+        orderBy: { startTime: 'asc' }
+    });
+
+    const doctorIds = Array.from(new Set(slots.map(s => s.doctorId)));
+    if (doctorIds.length === 0) return [];
+
+    const doctors = await prisma.doctor.findMany({
+        where: { id: { in: doctorIds }, active: true },
+        select: { id: true, name: true, department: true }
+    });
+
+    return doctors;
+}
+
+/**
  * Get available slots count for a specific date range
  */
 export async function getAvailableSlotsCount(

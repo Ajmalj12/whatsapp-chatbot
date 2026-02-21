@@ -6,7 +6,7 @@ export default function Home() {
       <div className="space-y-8">
         <header>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
-          <p className="mt-2 text-sm text-slate-500">Welcome back! Here's what's happening at ABC Hospital today.</p>
+          <p className="mt-2 text-sm text-slate-500">Welcome back! Here's what's happening at CarePlus Clinic today.</p>
         </header>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
