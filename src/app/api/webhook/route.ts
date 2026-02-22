@@ -337,26 +337,32 @@ export async function POST(req: Request) {
         switch (session.currentStep) {
             case 'REMINDER_REPLY': {
                 const appointmentId = currentData.appointmentId;
-                if (text.trim() === '1' && appointmentId) {
+                const isDemo = currentData.demo === true || !appointmentId;
+                if (text.trim() === '1') {
                     await prisma.session.update({
                         where: { phone: from },
                         data: { currentStep: 'CHAT', data: '{}' },
                     });
                     await sendWhatsAppMessage(from, "Perfect 👍 See you tomorrow!");
-                } else if (text.trim() === '2' && appointmentId) {
-                    const apt = await prisma.appointment.findUnique({
-                        where: { id: appointmentId },
-                        select: { availabilityId: true },
-                    });
-                    if (apt) {
-                        await prisma.appointment.update({
+                    if (!isDemo && appointmentId) {
+                        // Real appointment: already confirmed, no DB change needed
+                    }
+                } else if (text.trim() === '2') {
+                    if (!isDemo && appointmentId) {
+                        const apt = await prisma.appointment.findUnique({
                             where: { id: appointmentId },
-                            data: { status: 'Cancelled' },
+                            select: { availabilityId: true },
                         });
-                        await prisma.availability.update({
-                            where: { id: apt.availabilityId },
-                            data: { isBooked: false },
-                        });
+                        if (apt) {
+                            await prisma.appointment.update({
+                                where: { id: appointmentId },
+                                data: { status: 'Cancelled' },
+                            });
+                            await prisma.availability.update({
+                                where: { id: apt.availabilityId },
+                                data: { isBooked: false },
+                            });
+                        }
                     }
                     await prisma.session.update({
                         where: { phone: from },
@@ -422,20 +428,39 @@ export async function POST(req: Request) {
                         const doctorsInDept = await prisma.doctor.findMany({ where: { department: mentionedDept.name, active: true } });
                         if (doctorsInDept.length === 1) {
                             const doc = doctorsInDept[0];
-                            await prisma.session.update({
-                                where: { phone: from },
-                                data: {
-                                    currentStep: 'MORNING_EVENING_CHOICE',
-                                    data: JSON.stringify({
-                                        doctorId: doc.id,
-                                        doctorName: doc.name,
-                                        selectedDepartment: mentionedDept.name,
-                                        selectedDate: new Date().toISOString(),
-                                    }),
-                                },
-                            });
+                            const isSkinOrDerma = /skin|dermatology/i.test(mentionedDept.name);
                             const displayName = doc.name.startsWith('Dr') ? doc.name : `Dr. ${doc.name}`;
-                            await sendWhatsAppMessage(from, `${displayName} is available today. Morning or evening?`);
+                            if (isSkinOrDerma) {
+                                const tomorrow = new Date();
+                                tomorrow.setDate(tomorrow.getDate() + 1);
+                                await prisma.session.update({
+                                    where: { phone: from },
+                                    data: {
+                                        currentStep: 'SHALL_BOOK_TOMORROW_AFTERNOON',
+                                        data: JSON.stringify({
+                                            doctorId: doc.id,
+                                            doctorName: doc.name,
+                                            selectedDepartment: mentionedDept.name,
+                                            selectedDate: tomorrow.toISOString(),
+                                        }),
+                                    },
+                                });
+                                await sendWhatsAppMessage(from, `${displayName} is available tomorrow afternoon. Shall I book?`);
+                            } else {
+                                await prisma.session.update({
+                                    where: { phone: from },
+                                    data: {
+                                        currentStep: 'MORNING_EVENING_CHOICE',
+                                        data: JSON.stringify({
+                                            doctorId: doc.id,
+                                            doctorName: doc.name,
+                                            selectedDepartment: mentionedDept.name,
+                                            selectedDate: new Date().toISOString(),
+                                        }),
+                                    },
+                                });
+                                await sendWhatsAppMessage(from, `${displayName} is available today. Morning or evening?`);
+                            }
                         } else {
                             await prisma.session.update({
                                 where: { phone: from },
@@ -458,6 +483,87 @@ export async function POST(req: Request) {
                         title: "Departments",
                         rows: departmentsList.slice(0, 10).map((dept: any) => ({ id: `dept_${dept.id}`, title: dept.name, description: dept.description?.slice(0, 72) }))
                     }]);
+                    break;
+                }
+
+                // Lab: full body checkup cost
+                if (/\bfull\s*body\s*checkup\s*cost\b|how\s+much\s+.*full\s*body|full\s*body\s*.*cost\b/i.test(cleanText)) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { data: JSON.stringify({ ...currentData, labContext: true }) },
+                    });
+                    await sendWhatsAppMessage(from, "₹1999 👍 Includes 70+ tests.");
+                    break;
+                }
+                // Lab: home sample → which date
+                if (/\bhome\s*sample\b|home\s*collection\b/i.test(cleanText)) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'LAB_SCHEDULE_DATE', data: JSON.stringify({ ...currentData, labContext: true }) },
+                    });
+                    await sendWhatsAppMessage(from, "Yes. Which date should we schedule?");
+                    break;
+                }
+
+                // Dr [name] available today? → structured reply + store lastAskedDoctorId
+                const drAvailableMatch = cleanText.match(/\bdr\.?\s*(\w+)\s+available\s+today\b|is\s+dr\.?\s*(\w+)\s+available\s+today\b/i);
+                const drNameFromQuery = drAvailableMatch ? (drAvailableMatch[1] || drAvailableMatch[2] || '').toLowerCase() : '';
+                if (drNameFromQuery) {
+                    const doctors = await prisma.doctor.findMany({ where: { active: true }, include: { availability: { where: { isBooked: false, startTime: { gte: new Date() } }, orderBy: { startTime: 'asc' }, take: 20 } } });
+                    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+                    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+                    const matchedDr = doctors.find(d => d.name.toLowerCase().replace(/dr\.?\s*/g, '').includes(drNameFromQuery) || drNameFromQuery.includes(d.name.toLowerCase().replace(/dr\.?\s*/g, '')));
+                    if (matchedDr) {
+                        const todaySlots = matchedDr.availability.filter((a: any) => a.startTime >= todayStart && a.startTime <= todayEnd);
+                        if (todaySlots.length > 0) {
+                            const first = new Date(todaySlots[0].startTime);
+                            const last = new Date(todaySlots[todaySlots.length - 1].startTime);
+                            const rangeStr = `${first.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} – ${last.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+                            await prisma.session.update({
+                                where: { phone: from },
+                                data: { data: JSON.stringify({ ...currentData, lastAskedDoctorId: matchedDr.id, lastAskedDoctorName: matchedDr.name }) },
+                            });
+                            await sendWhatsAppMessage(from, `Yes 👍 Available from ${rangeStr}.`);
+                        } else {
+                            await sendWhatsAppMessage(from, `No upcoming slots today for ${matchedDr.name}.`);
+                        }
+                    } else {
+                        await sendWhatsAppMessage(from, "I couldn't find that doctor. You can ask who is available today or say Hi to start over.");
+                    }
+                    break;
+                }
+
+                // Any slot now? (when we have lastAskedDoctorId)
+                if (currentData.lastAskedDoctorId && /\bany\s*slot\s*now\b|slot\s*now\b|next\s*slot\b|book\s*now\b/i.test(cleanText)) {
+                    const now = new Date();
+                    const nextSlot = await prisma.availability.findFirst({
+                        where: {
+                            doctorId: currentData.lastAskedDoctorId,
+                            isBooked: false,
+                            startTime: { gte: now },
+                        },
+                        orderBy: { startTime: 'asc' },
+                    });
+                    if (nextSlot) {
+                        const timeStr = new Date(nextSlot.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        const doc = await prisma.doctor.findUnique({ where: { id: currentData.lastAskedDoctorId } });
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'NEXT_SLOT_OFFERED',
+                                data: JSON.stringify({
+                                    ...currentData,
+                                    availabilityId: nextSlot.id,
+                                    doctorId: currentData.lastAskedDoctorId,
+                                    doctorName: doc?.name || currentData.lastAskedDoctorName,
+                                    fromNextSlot: true,
+                                }),
+                            },
+                        });
+                        await sendWhatsAppMessage(from, `Next available slot is ${timeStr}. Shall I book?`);
+                    } else {
+                        await sendWhatsAppMessage(from, "No slot available right now. Would you like to check another day or doctor?");
+                    }
                     break;
                 }
 
@@ -512,6 +618,77 @@ export async function POST(req: Request) {
                         if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
                         else await sendWhatsAppMessage(from, aiReply);
                     }
+                }
+                break;
+            }
+
+            case 'LAB_SCHEDULE_DATE': {
+                const relDate = parseRelativeTime(text);
+                const nat = parseNaturalTime(text);
+                const dateForMsg = relDate || (nat ? nat.date : null) || new Date(Date.now() + 86400000);
+                const dayStr = dateForMsg.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const isMorning = /\bmorning\b|am\b|7\s*[-–]\s*9|7-9/i.test(cleanText);
+                const windowStr = isMorning ? '7–9 AM' : '9 AM – 12 PM';
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: { currentStep: 'CHAT', data: '{}' },
+                });
+                await sendWhatsAppMessage(from, `Booked 👍 Sample pickup ${dayStr} ${windowStr}.`);
+                break;
+            }
+
+            case 'NEXT_SLOT_OFFERED': {
+                if (/\b(ok|yes|book)\b/i.test(cleanText)) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'COLLECT_NAME', data: JSON.stringify({ ...currentData }) },
+                    });
+                    await sendWhatsAppMessage(from, "Great! Please enter the Patient's Name:");
+                } else {
+                    await sendWhatsAppMessage(from, "Reply with Ok or Yes to book the slot, or say Hi to start over.");
+                }
+                break;
+            }
+
+            case 'SHALL_BOOK_TOMORROW_AFTERNOON': {
+                if (/\b(yes|book|ok)\b/i.test(cleanText)) {
+                    const doctorId = currentData.doctorId;
+                    const doctorName = currentData.doctorName;
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const tomorrowStart = new Date(tomorrow);
+                    tomorrowStart.setHours(12, 0, 0, 0);
+                    const tomorrowEnd = new Date(tomorrow);
+                    tomorrowEnd.setHours(17, 59, 59, 999);
+                    const slots = await prisma.availability.findMany({
+                        where: {
+                            doctorId,
+                            isBooked: false,
+                            startTime: { gte: tomorrowStart, lte: tomorrowEnd },
+                        },
+                        orderBy: { startTime: 'asc' },
+                    });
+                    if (slots.length > 0) {
+                        const timeStrs = slots.slice(0, 10).map((s: any) =>
+                            new Date(s.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                        );
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'TIME_SELECTION',
+                                data: JSON.stringify({
+                                    ...currentData,
+                                    selectedDate: tomorrow.toISOString(),
+                                    availableSlots: slots.map((s: any) => ({ id: s.id, startTime: s.startTime })),
+                                }),
+                            },
+                        });
+                        await sendWhatsAppMessage(from, `Available slots: ${timeStrs.join(', ')}`);
+                    } else {
+                        await sendWhatsAppMessage(from, `Sorry, no afternoon slots available tomorrow for ${doctorName}. Would you like another day?`);
+                    }
+                } else {
+                    await sendWhatsAppMessage(from, "Reply Yes to see available slots, or say Hi to start over.");
                 }
                 break;
             }
@@ -693,20 +870,39 @@ export async function POST(req: Request) {
 
                 if (doctorsInDept.length === 1) {
                     const doc = doctorsInDept[0];
-                    await prisma.session.update({
-                        where: { phone: from },
-                        data: {
-                            currentStep: 'MORNING_EVENING_CHOICE',
-                            data: JSON.stringify({
-                                doctorId: doc.id,
-                                doctorName: doc.name,
-                                selectedDepartment: selectedDeptName,
-                                selectedDate: new Date().toISOString(),
-                            }),
-                        },
-                    });
                     const displayName = doc.name.startsWith('Dr') ? doc.name : `Dr. ${doc.name}`;
-                    await sendWhatsAppMessage(from, `${displayName} is available today. Morning or evening?`);
+                    const isSkinOrDerma = /skin|dermatology/i.test(selectedDeptName);
+                    if (isSkinOrDerma) {
+                        const tomorrow = new Date();
+                        tomorrow.setDate(tomorrow.getDate() + 1);
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'SHALL_BOOK_TOMORROW_AFTERNOON',
+                                data: JSON.stringify({
+                                    doctorId: doc.id,
+                                    doctorName: doc.name,
+                                    selectedDepartment: selectedDeptName,
+                                    selectedDate: tomorrow.toISOString(),
+                                }),
+                            },
+                        });
+                        await sendWhatsAppMessage(from, `${displayName} is available tomorrow afternoon. Shall I book?`);
+                    } else {
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'MORNING_EVENING_CHOICE',
+                                data: JSON.stringify({
+                                    doctorId: doc.id,
+                                    doctorName: doc.name,
+                                    selectedDepartment: selectedDeptName,
+                                    selectedDate: new Date().toISOString(),
+                                }),
+                            },
+                        });
+                        await sendWhatsAppMessage(from, `${displayName} is available today. Morning or evening?`);
+                    }
                 } else {
                     await prisma.session.update({
                         where: { phone: from },
@@ -1157,7 +1353,8 @@ export async function POST(req: Request) {
 
                     await prisma.session.delete({ where: { phone: from } });
 
-                    await sendWhatsAppMessage(from, "Appointment confirmed. See you soon!");
+                    const confirmMsg = currentData.fromNextSlot ? "Confirmed 👍 Please arrive early." : "Appointment confirmed. See you soon!";
+                    await sendWhatsAppMessage(from, confirmMsg);
                 } else if (text === 'Cancel') {
                     await prisma.session.delete({ where: { phone: from } });
                     await sendWhatsAppButtons(from, "❌ Booking cancelled. You can start over by typing 'Hi' or click below.", ["Book Appointment"]);

@@ -22,6 +22,7 @@ export default function Layout({ children, fullWidth = false }: { children: Reac
                                 <a href="/availability" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Availability</a>
                                 <a href="/appointments" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Appointments</a>
                                 <a href="/tickets" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Tickets</a>
+                                <a href="/reports" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Reports</a>
                                 <a href="/knowledge" className="text-sm font-medium text-emerald-600 font-bold hover:text-emerald-700 transition-colors flex items-center gap-1">
                                     <span className="text-base">🧠</span>
                                     Knowledge Base

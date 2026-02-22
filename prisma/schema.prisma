@@ -88,3 +88,13 @@ model TicketMessage {
   content   String
   createdAt DateTime @default(now())
 }
+
+model ScheduledReminder {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  phone         String
+  sendAt        DateTime
+  type          String   // DEMO, APPOINTMENT
+  appointmentId String?  @db.ObjectId
+  status        String   @default("PENDING") // PENDING, SENT, CANCELLED
+  createdAt     DateTime @default(now())
+}

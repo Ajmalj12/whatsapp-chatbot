@@ -7,10 +7,22 @@ async function main() {
     await prisma.availability.deleteMany({})
     await prisma.doctor.deleteMany({})
 
+    const departmentNames = ['Cardiology', 'General Medicine', 'Orthopedic', 'Dermatology']
+    for (const name of departmentNames) {
+        await prisma.department.upsert({
+            where: { name },
+            create: { name, active: true, displayOrder: departmentNames.indexOf(name) },
+            update: {},
+        })
+    }
+
     const doctors = [
         { name: 'Dr. Anil', department: 'Cardiology' },
         { name: 'Dr. Meera', department: 'General Medicine' },
         { name: 'Dr. Faisal', department: 'Orthopedic' },
+        { name: 'Dr. Rahul', department: 'General Medicine' },
+        { name: 'Dr. Ayesha', department: 'Dermatology' },
+        { name: 'Dr. Ahmed', department: 'General Medicine' },
     ]
 
     console.log('Seeding doctors and availability...')
@@ -23,23 +35,60 @@ async function main() {
             },
         })
 
-        // Add 3 slots for each doctor starting from tomorrow
-        for (let i = 1; i <= 3; i++) {
-            const startTime = new Date();
-            startTime.setDate(startTime.getDate() + 1); // Tomorrow
-            startTime.setHours(9 + i, 0, 0, 0); // 10am, 11am, 12pm
+        const isRahul = doc.name === 'Dr. Rahul'
+        const isAyesha = doc.name === 'Dr. Ayesha'
+        const isAhmed = doc.name === 'Dr. Ahmed'
 
-            const endTime = new Date(startTime);
-            endTime.setHours(startTime.getHours() + 1);
-
-            await prisma.availability.create({
-                data: {
-                    doctorId: createdDoctor.id,
-                    startTime,
-                    endTime,
-                    isBooked: false,
+        if (isRahul) {
+            const today = new Date()
+            for (const [h, m] of [[17, 30], [18, 15]]) {
+                const startTime = new Date(today)
+                startTime.setHours(h, m, 0, 0)
+                if (startTime <= today) continue
+                const endTime = new Date(startTime)
+                endTime.setMinutes(endTime.getMinutes() + 45)
+                await prisma.availability.create({
+                    data: { doctorId: createdDoctor.id, startTime, endTime, isBooked: false },
+                })
+            }
+        } else if (isAyesha) {
+            const tomorrow = new Date()
+            tomorrow.setDate(tomorrow.getDate() + 1)
+            for (const hour of [13, 14, 15, 16]) {
+                const startTime = new Date(tomorrow)
+                startTime.setHours(hour, 0, 0, 0)
+                const endTime = new Date(startTime)
+                endTime.setHours(startTime.getHours() + 1)
+                await prisma.availability.create({
+                    data: { doctorId: createdDoctor.id, startTime, endTime, isBooked: false },
+                })
+            }
+        } else if (isAhmed) {
+            const today = new Date()
+            for (const hour of [16, 17, 18, 19]) {
+                for (const min of [0, 45]) {
+                    if (hour === 19 && min === 45) continue
+                    const startTime = new Date(today)
+                    startTime.setHours(hour, min, 0, 0)
+                    if (startTime <= today) continue
+                    const endTime = new Date(startTime)
+                    endTime.setMinutes(endTime.getMinutes() + 45)
+                    await prisma.availability.create({
+                        data: { doctorId: createdDoctor.id, startTime, endTime, isBooked: false },
+                    })
                 }
-            })
+            }
+        } else {
+            for (let i = 1; i <= 3; i++) {
+                const startTime = new Date()
+                startTime.setDate(startTime.getDate() + 1)
+                startTime.setHours(9 + i, 0, 0, 0)
+                const endTime = new Date(startTime)
+                endTime.setHours(startTime.getHours() + 1)
+                await prisma.availability.create({
+                    data: { doctorId: createdDoctor.id, startTime, endTime, isBooked: false },
+                })
+            }
         }
     }
 
