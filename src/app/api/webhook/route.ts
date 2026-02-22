@@ -486,6 +486,20 @@ export async function POST(req: Request) {
                     break;
                 }
 
+                // Lab report request → escalate to human chat so team can send report via portal
+                if (/\blab\s*report\b|need\s*lab\s*report|send\s*lab\s*report|get\s*lab\s*report|want\s*lab\s*report|lab\s*report\s*please/i.test(cleanText)) {
+                    await prisma.supportTicket.create({
+                        data: {
+                            phone: from,
+                            query: 'Lab report request',
+                            status: 'OPEN',
+                            messages: { create: { sender: 'USER', content: text } },
+                        },
+                    });
+                    await sendWhatsAppMessage(from, "Please share your lab details or what you need (e.g. report type, patient name). Our team will assist you and send the report through here.");
+                    return NextResponse.json({ status: 'ok' });
+                }
+
                 // Lab: full body checkup cost
                 if (/\bfull\s*body\s*checkup\s*cost\b|how\s+much\s+.*full\s*body|full\s*body\s*.*cost\b/i.test(cleanText)) {
                     await prisma.session.update({
