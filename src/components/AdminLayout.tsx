@@ -13,6 +13,7 @@ export default function Layout({ children, fullWidth = false }: { children: Reac
                             <span className="text-xl font-bold tracking-tight text-slate-900">
                                 CarePlus <span className="text-emerald-600">Clinic</span>
                             </span>
+                            <span className="hidden text-xs text-slate-500 sm:inline">Demo clinic management</span>
                         </div>
                         <div className="hidden md:block">
                             <div className="flex items-center gap-8">

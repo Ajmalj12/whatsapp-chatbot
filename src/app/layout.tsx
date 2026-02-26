@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CarePlus Clinic Admin Portal",
-  description: "Manage appointments and doctors for CarePlus Clinic WhatsApp Bot",
+  title: "CarePlus Clinic Admin",
+  description: "Demo clinic admin – manage appointments, doctors, and WhatsApp bot for CarePlus Clinic",
 };
 
 export default function RootLayout({

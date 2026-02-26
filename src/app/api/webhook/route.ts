@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppList } from '@/lib/whatsapp';
 import { getAIResponse } from '@/lib/groq';
+import { classifyNameInput, classifyAgeInput } from '@/lib/classifyFormInput';
+import { pick, askAgeForName, reAskName, reAskAge, invalidAge, confirmBooking, confirmBookingNextSlot, bookingCancelled, confirmOrCancel, defaultConfused, welcome } from '@/lib/messages';
 import { parseNaturalTime, parseRelativeTime, containsTimeRequest, formatAppointmentTime } from '@/lib/timeParser';
 import { findBestSlots, formatSlotMatches, getDoctorsWithSlotsOnDate } from '@/lib/slotMatcher';
 
@@ -57,7 +59,7 @@ export async function POST(req: Request) {
                 session = await prisma.session.create({
                     data: { phone: from, currentStep: 'CHAT', data: '{}' },
                 });
-                await sendWhatsAppMessage(from, "Hello 👍 Welcome to CarePlus Clinic. How can I help you today?");
+                await sendWhatsAppMessage(from, pick(welcome));
                 return NextResponse.json({ status: 'ok' });
             }
 
@@ -81,24 +83,24 @@ export async function POST(req: Request) {
             if (session) {
                 await prisma.session.delete({ where: { phone: from } });
             }
-            session = await prisma.session.create({
-                data: { phone: from, currentStep: 'CHAT', data: '{}' },
-            });
-            await sendWhatsAppMessage(from, "Hello 👍 Welcome to CarePlus Clinic. How can I help you today?");
-            return NextResponse.json({ status: 'ok' });
-        }
+                session = await prisma.session.create({
+                    data: { phone: from, currentStep: 'CHAT', data: '{}' },
+                });
+                await sendWhatsAppMessage(from, pick(welcome));
+                return NextResponse.json({ status: 'ok' });
+            }
 
         if (!session) {
             console.log(`[Webhook] New session for ${from}`);
-            session = await prisma.session.create({
-                data: {
-                    phone: from,
-                    currentStep: 'CHAT',
-                    data: '{}',
-                },
-            });
-            await sendWhatsAppMessage(from, "Hello 👍 Welcome to CarePlus Clinic. How can I help you today?");
-            return NextResponse.json({ status: 'ok' });
+                session = await prisma.session.create({
+                    data: {
+                        phone: from,
+                        currentStep: 'CHAT',
+                        data: '{}',
+                    },
+                });
+                await sendWhatsAppMessage(from, pick(welcome));
+                return NextResponse.json({ status: 'ok' });
         }
 
         const currentData = JSON.parse(session.data || '{}');
@@ -378,7 +380,7 @@ export async function POST(req: Request) {
             case 'CHAT': {
                 const isGreeting = /^(hi|hello|hey|vanakkam|namaskaram|hai|hlw|hlo)$/i.test(cleanText) || cleanText === 'hi' || cleanText === 'hello';
                 if (isGreeting) {
-                    await sendWhatsAppMessage(from, "Hello 👍 Welcome to CarePlus Clinic. How can I help you today?");
+                    await sendWhatsAppMessage(from, pick(welcome));
                     break;
                 }
 
@@ -714,7 +716,7 @@ export async function POST(req: Request) {
                     where: { phone: from },
                     data: { currentStep: 'CHAT', data: '{}' },
                 });
-                await sendWhatsAppMessage(from, "Hello 👍 Welcome to CarePlus Clinic. How can I help you today?");
+                await sendWhatsAppMessage(from, pick(welcome));
                 break;
             }
 
@@ -1293,38 +1295,61 @@ export async function POST(req: Request) {
             }
 
             case 'COLLECT_NAME': {
-                // Guard: Ignore interactive replies (like double-delivered button clicks from previous step)
                 if (interactiveId || text.length < 2) {
                     console.log("[Webhook] Ignoring interactive/short input in COLLECT_NAME");
                     return NextResponse.json({ status: 'ok' });
                 }
 
-                await prisma.session.update({
-                    where: { phone: from },
-                    data: {
-                        currentStep: 'COLLECT_AGE',
-                        data: JSON.stringify({ ...currentData, patientName: text })
-                    },
-                });
-                await sendWhatsAppMessage(from, `Got it. What is ${text}'s age?`);
+                const nameResult = await classifyNameInput(text, session.language);
+                if (nameResult.isQuestion && nameResult.replyToUser) {
+                    await sendWhatsAppMessage(from, nameResult.replyToUser);
+                    await sendWhatsAppMessage(from, pick(reAskName));
+                    return NextResponse.json({ status: 'ok' });
+                }
+                if (nameResult.isPatientName && nameResult.extractedName) {
+                    const patientName = nameResult.extractedName;
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: {
+                            currentStep: 'COLLECT_AGE',
+                            data: JSON.stringify({ ...currentData, patientName })
+                        },
+                    });
+                    await sendWhatsAppMessage(from, askAgeForName(patientName));
+                    break;
+                }
+                await sendWhatsAppMessage(from, pick(reAskName));
                 break;
             }
 
             case 'COLLECT_AGE': {
-                // Guard: Ignore interactive replies
                 if (interactiveId) {
                     return NextResponse.json({ status: 'ok' });
                 }
 
-                // Validate age is numeric
                 const ageText = text.trim();
-                const ageNum = parseInt(ageText);
-                if (!/^\d+$/.test(ageText) || ageNum < 1 || ageNum > 99) {
-                    await sendWhatsAppMessage(from, "❌ Invalid age format. Please enter a valid age (number only):");
+                let ageNum: number | null = null;
+                if (/^\d+$/.test(ageText)) {
+                    const n = parseInt(ageText, 10);
+                    if (n >= 1 && n <= 99) ageNum = n;
+                }
+                if (ageNum === null) {
+                    const ageResult = await classifyAgeInput(text, session.language);
+                    if (ageResult.isQuestion && ageResult.replyToUser) {
+                        await sendWhatsAppMessage(from, ageResult.replyToUser);
+                        await sendWhatsAppMessage(from, pick(reAskAge));
+                        return NextResponse.json({ status: 'ok' });
+                    }
+                    if (ageResult.isAge && ageResult.extractedAge != null) {
+                        ageNum = ageResult.extractedAge;
+                    }
+                }
+                if (ageNum === null) {
+                    await sendWhatsAppMessage(from, pick(invalidAge));
                     return NextResponse.json({ status: 'ok' });
                 }
 
-                const finalAgeData = { ...currentData, patientAge: ageText };
+                const finalAgeData = { ...currentData, patientAge: String(ageNum) };
                 const doc = await prisma.doctor.findUnique({ where: { id: finalAgeData.doctorId } });
                 const slot = await prisma.availability.findUnique({ where: { id: finalAgeData.availabilityId } });
 
@@ -1367,19 +1392,19 @@ export async function POST(req: Request) {
 
                     await prisma.session.delete({ where: { phone: from } });
 
-                    const confirmMsg = currentData.fromNextSlot ? "Confirmed 👍 Please arrive early." : "Appointment confirmed. See you soon!";
+                    const confirmMsg = currentData.fromNextSlot ? pick(confirmBookingNextSlot) : pick(confirmBooking);
                     await sendWhatsAppMessage(from, confirmMsg);
                 } else if (text === 'Cancel') {
                     await prisma.session.delete({ where: { phone: from } });
-                    await sendWhatsAppButtons(from, "❌ Booking cancelled. You can start over by typing 'Hi' or click below.", ["Book Appointment"]);
+                    await sendWhatsAppButtons(from, pick(bookingCancelled), ["Book Appointment"]);
                 } else {
-                    await sendWhatsAppButtons(from, "Please confirm or cancel your booking using the buttons below 👇", ["Confirm Booking", "Cancel"]);
+                    await sendWhatsAppButtons(from, pick(confirmOrCancel), ["Confirm Booking", "Cancel"]);
                 }
                 break;
             }
 
             default:
-                await sendWhatsAppMessage(from, "Sorry, I didn't understand that. Type 'Hi' to restart.");
+                await sendWhatsAppMessage(from, pick(defaultConfused));
                 break;
         }
 
