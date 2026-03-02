@@ -122,6 +122,11 @@ async function main() {
         { question: 'book cheyyam', answer: 'Sure! Say "Book Appointment" or tell me the doctor and date (e.g. tomorrow with Dr. Rahul).' },
         { question: 'appointment edukkan', answer: 'Sure! Say "Book Appointment" or tell me the doctor and date.' },
         { question: 'booking venam', answer: 'Sure! Say "Book Appointment" or tell me which doctor and day you need.' },
+        // Location / address (edit the answer in Knowledge Base portal with your real address)
+        { question: 'Where is the clinic?', answer: 'CarePlus Clinic – Demo location. Update this in the admin Knowledge Base with your real address.' },
+        { question: 'Clinic address?', answer: 'CarePlus Clinic – Demo location. Update this in the admin Knowledge Base with your real address.' },
+        { question: 'Ningalude sthalam ewde anu?', answer: 'CarePlus Clinic – Demo location. Update this in the admin Knowledge Base with your real address.' },
+        { question: 'Place ewde?', answer: 'CarePlus Clinic – Demo location. Update this in the admin Knowledge Base with your real address.' },
         // Demo clinic
         { question: 'Is this a demo?', answer: 'This is a demo clinic for testing the WhatsApp bot. You can book slots, ask about doctors and timings.' },
     ]
