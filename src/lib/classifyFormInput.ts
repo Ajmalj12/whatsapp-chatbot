@@ -1,7 +1,7 @@
-import Groq from 'groq-sdk';
+import { GoogleGenAI } from '@google/genai';
 
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
+const ai = new GoogleGenAI({
+    apiKey: 'AIzaSyB4EZSZ6F4rq1RMsMXqgT9jjMrf4i9Z8qU',
 });
 
 export type ClassifyNameResult = {
@@ -78,22 +78,16 @@ export async function classifyNameInput(
         replyToUser: null,
     };
 
-    if (!process.env.GROQ_API_KEY) {
-        if (QUESTION_HINTS.test(userMessage)) return { ...fallback, isQuestion: true, replyToUser: "We're open 9 AM – 9 PM. Please share the patient's name when you're ready." };
-        if (fallbackLooksLikeName(userMessage)) return { isPatientName: true, extractedName: userMessage.trim(), isQuestion: false, replyToUser: null };
-        return { ...fallback, isQuestion: true, replyToUser: "Please enter the patient's name (e.g. John or the person visiting)." };
-    }
-
     try {
         const langLine = preferredLanguage ? ` Preferred reply language for replyToUser: ${preferredLanguage}.` : '';
-        const completion = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: NAME_SYSTEM_PROMPT + langLine },
-                { role: 'user', content: userMessage },
-            ],
-            model: 'llama-3.1-8b-instant',
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            config: {
+                systemInstruction: NAME_SYSTEM_PROMPT + langLine,
+            }
         });
-        const raw = completion.choices[0]?.message?.content?.trim() || '';
+        const raw = response.text?.trim() || '';
         const parsed = parseJsonFromContent(raw);
         if (!parsed) {
             if (QUESTION_HINTS.test(userMessage)) return { ...fallback, isQuestion: true, replyToUser: "We're open 9 AM – 9 PM. Please share the patient's name." };
@@ -106,7 +100,7 @@ export async function classifyNameInput(
         const replyToUser = typeof parsed.replyToUser === 'string' ? parsed.replyToUser.trim() || null : null;
         return { isPatientName, extractedName, isQuestion, replyToUser };
     } catch (err) {
-        console.error('[classifyNameInput] Groq error:', err);
+        console.error('[classifyNameInput] Gemini error:', err);
         if (QUESTION_HINTS.test(userMessage)) return { ...fallback, isQuestion: true, replyToUser: "We're open 9 AM – 9 PM. Please share the patient's name." };
         if (fallbackLooksLikeName(userMessage)) return { isPatientName: true, extractedName: userMessage.trim(), isQuestion: false, replyToUser: null };
         return fallback;
@@ -129,21 +123,16 @@ export async function classifyAgeInput(
         return { isAge: true, extractedAge: ageNum, isQuestion: false, replyToUser: null };
     }
 
-    if (!process.env.GROQ_API_KEY) {
-        if (QUESTION_HINTS.test(userMessage)) return { ...fallback, isQuestion: true, replyToUser: "We're open 9 AM – 9 PM. Please enter the patient's age (number 1-99)." };
-        return fallback;
-    }
-
     try {
         const langLine = preferredLanguage ? ` Preferred reply language for replyToUser: ${preferredLanguage}.` : '';
-        const completion = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: AGE_SYSTEM_PROMPT + langLine },
-                { role: 'user', content: userMessage },
-            ],
-            model: 'llama-3.1-8b-instant',
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            config: {
+                systemInstruction: AGE_SYSTEM_PROMPT + langLine,
+            }
         });
-        const raw = completion.choices[0]?.message?.content?.trim() || '';
+        const raw = response.text?.trim() || '';
         const parsed = parseJsonFromContent(raw);
         if (!parsed) {
             const match = userMessage.match(/\b(\d{1,2})\b/);
@@ -162,7 +151,7 @@ export async function classifyAgeInput(
         const replyToUser = typeof parsed.replyToUser === 'string' ? parsed.replyToUser.trim() || null : null;
         return { isAge, extractedAge, isQuestion, replyToUser };
     } catch (err) {
-        console.error('[classifyAgeInput] Groq error:', err);
+        console.error('[classifyAgeInput] Gemini error:', err);
         const match = userMessage.match(/\b(\d{1,2})\b/);
         if (match) {
             const n = parseInt(match[1], 10);
@@ -172,3 +161,4 @@ export async function classifyAgeInput(
         return fallback;
     }
 }
+

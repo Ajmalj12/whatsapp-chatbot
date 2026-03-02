@@ -1,10 +1,9 @@
 
-import Groq from 'groq-sdk';
+import { GoogleGenAI } from '@google/genai';
 import prisma from './prisma';
 
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY,
-});
+// Initialize Gemini with hardcoded API key as requested
+const ai = new GoogleGenAI({ apiKey: 'AIzaSyB4EZSZ6F4rq1RMsMXqgT9jjMrf4i9Z8qU' });
 
 /**
  * Generate dynamic context from database for AI responses
@@ -26,7 +25,7 @@ async function getDynamicContext(): Promise<string[]> {
             contexts.push(`Available Departments:\n${deptList}`);
         }
 
-        // 2. Doctor availability and slots (use this for "who is available", "Dr X available today?", etc.)
+        // 2. Doctor availability and slots
         const doctors = await prisma.doctor.findMany({
             where: { active: true },
             include: {
@@ -89,10 +88,6 @@ async function getDynamicContext(): Promise<string[]> {
 }
 
 export async function getAIResponse(userQuery: string, staticContext?: string[], preferredLanguage?: string | null) {
-    if (!process.env.GROQ_API_KEY) {
-        return "I'm sorry, my AI brain is currently offline (API Key missing). Please contact support.";
-    }
-
     try {
         // Combine dynamic and static context
         const dynamicContext = await getDynamicContext();
@@ -148,18 +143,19 @@ Knowledge Base:
 ${context}
 `;
 
-        const completion = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userQuery },
-            ],
-            model: 'llama-3.1-8b-instant',
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts: [{ text: userQuery }] }],
+            config: {
+                systemInstruction: systemPrompt,
+            }
         });
 
-        const rawContent = completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+        const rawContent = response.text || "I'm sorry, I couldn't generate a response.";
         return rawContent;
     } catch (error: unknown) {
-        console.error("Groq API Error:", error);
+        console.error("Gemini API Error:", error);
         return "I'm having trouble connecting to my AI service right now.";
     }
 }
+
