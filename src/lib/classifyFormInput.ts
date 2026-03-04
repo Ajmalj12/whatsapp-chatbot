@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({
-    apiKey: 'AIzaSyB4EZSZ6F4rq1RMsMXqgT9jjMrf4i9Z8qU',
+    apiKey: process.env.GEMINI_API_KEY as string,
 });
 
 export type ClassifyNameResult = {

@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import prisma from './prisma';
 
 // Initialize Gemini with hardcoded API key as requested
-const ai = new GoogleGenAI({ apiKey: 'AIzaSyB4EZSZ6F4rq1RMsMXqgT9jjMrf4i9Z8qU' });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 /**
  * Generate dynamic context from database for AI responses
