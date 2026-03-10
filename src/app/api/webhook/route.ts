@@ -6,6 +6,41 @@ import { classifyNameInput, classifyAgeInput } from '@/lib/classifyFormInput';
 import { pick, askAgeForName, reAskName, reAskAge, invalidAge, confirmBooking, confirmBookingNextSlot, bookingCancelled, confirmOrCancel, defaultConfused, welcome } from '@/lib/messages';
 import { parseNaturalTime, parseRelativeTime, containsTimeRequest, formatAppointmentTime } from '@/lib/timeParser';
 import { findBestSlots, formatSlotMatches, getDoctorsWithSlotsOnDate } from '@/lib/slotMatcher';
+import { formatDoctorName, formatBulletList } from '@/lib/formatReply';
+
+const DEFAULT_AI_FALLBACK = "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.";
+
+/** Send AI reply with UNKNOWN_QUERY / CONNECT_AGENT / safety handling. Used when user message is not a valid selection. */
+async function sendAIReplyAndMaybeButton(
+    from: string,
+    text: string,
+    cleanText: string,
+    session: { language: string | null },
+    options?: { appendReminder?: string; fallbackMessage?: string }
+): Promise<void> {
+    const aiReply = await getAIResponse(text, undefined, session.language);
+    const trimmed = aiReply.trim();
+    const treatAsUnknown = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
+    const hasHallucinatedLocation = /\bKollam\b/i.test(aiReply);
+    const useFallback = treatAsUnknown || hasHallucinatedLocation;
+    const fallbackMsg = options?.fallbackMessage ?? DEFAULT_AI_FALLBACK;
+
+    if (trimmed === 'CONNECT_AGENT' && !useFallback) {
+        await prisma.supportTicket.create({
+            data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
+        });
+        await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
+    } else if (useFallback) {
+        await sendWhatsAppMessage(from, fallbackMsg);
+    } else {
+        const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
+        if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
+        else await sendWhatsAppMessage(from, aiReply);
+        if (options?.appendReminder) {
+            await sendWhatsAppMessage(from, options.appendReminder);
+        }
+    }
+}
 
 export async function POST(req: Request) {
     try {
@@ -396,7 +431,8 @@ export async function POST(req: Request) {
                     if (doctorsOnDate.length === 0) {
                         await sendWhatsAppMessage(from, `Sorry, no doctors have available slots on ${dateStr}. Would you like to check another day?`);
                     } else {
-                        const names = doctorsOnDate.map(d => `Dr. ${d.name}`).join(', ');
+                        const doctorLines = doctorsOnDate.map((d) => `${formatDoctorName(d.name)} – ${d.department || 'General'}`);
+                        const bulletList = formatBulletList(doctorLines);
                         await prisma.session.update({
                             where: { phone: from },
                             data: {
@@ -404,7 +440,7 @@ export async function POST(req: Request) {
                                 data: JSON.stringify({ selectedDate: availabilityDate.toISOString() }),
                             },
                         });
-                        await sendWhatsAppMessage(from, `${names} ${doctorsOnDate.length === 1 ? 'is' : 'are'} available on ${dateStr}. Which doctor would you like to book?`);
+                        await sendWhatsAppMessage(from, `These doctors are available on ${dateStr}:\n${bulletList}\n\nWhich doctor would you like to book?`);
                     }
                     break;
                 }
@@ -699,7 +735,7 @@ export async function POST(req: Request) {
                                 }),
                             },
                         });
-                        await sendWhatsAppMessage(from, `Available slots: ${timeStrs.join(', ')}`);
+                        await sendWhatsAppMessage(from, `Available slots:\n${formatBulletList(timeStrs)}`);
                     } else {
                         await sendWhatsAppMessage(from, `Sorry, no afternoon slots available tomorrow for ${doctorName}. Would you like another day?`);
                     }
@@ -763,7 +799,7 @@ export async function POST(req: Request) {
                         }),
                     },
                 });
-                await sendWhatsAppMessage(from, `Available slots: ${timeStrs.join(', ')}`);
+                await sendWhatsAppMessage(from, `Available slots:\n${formatBulletList(timeStrs)}`);
                 break;
             }
 
@@ -1140,7 +1176,9 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, "Great! Please enter the Patient's Name:");
                 } else {
-                    await sendWhatsAppMessage(from, "Please select one of the alternative time slots.");
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                        appendReminder: "When you're ready, select one of the alternative time slots above.",
+                    });
                 }
                 break;
             }
@@ -1197,7 +1235,9 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSltShortcut.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    await sendWhatsAppMessage(from, "Tap a time from the list above, or type the time (e.g. 11:00 AM).");
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                        appendReminder: "When you're ready, pick a time from the list above or type it (e.g. 11:00 AM).",
+                    });
                 }
                 break;
             }
@@ -1222,7 +1262,15 @@ export async function POST(req: Request) {
                 );
 
                 if (filteredSlots.length === 0) {
-                    await sendWhatsAppMessage(from, "Sorry, no slots available for that date. Please choose another date.");
+                    // Distinguish date pick (no slots) from free-text question (e.g. "who are in ortho?")
+                    const looksLikeDateListFormat = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}$/i.test(selDate.trim());
+                    if (looksLikeDateListFormat) {
+                        await sendWhatsAppMessage(from, "Sorry, no slots available for that date. Please choose another date.");
+                    } else {
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                            appendReminder: "When you're ready, pick a date from the list above for your appointment.",
+                        });
+                    }
                     return NextResponse.json({ status: 'ok' });
                 }
 
@@ -1277,19 +1325,9 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSlt.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    // Re-send list if no match
-                    await sendWhatsAppList(
-                        from,
-                        `All available slots for on ${selectedDateStr} 👇`,
-                        "Select Time",
-                        [{
-                            title: "Time Slots",
-                            rows: avSlotsData.slice(0, 10).map((slot: any, idx: number) => ({
-                                id: `slot_${idx}`,
-                                title: new Date(slot.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                            }))
-                        }]
-                    );
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                        appendReminder: "When you're ready, pick a time from the list above or type it (e.g. 11:00 AM).",
+                    });
                 }
                 break;
             }
