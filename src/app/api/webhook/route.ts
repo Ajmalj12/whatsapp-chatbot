@@ -31,14 +31,13 @@ async function sendAIReplyAndMaybeButton(
         });
         await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
     } else if (useFallback) {
-        await sendWhatsAppMessage(from, fallbackMsg);
+        const msg = options?.appendReminder ? `${fallbackMsg}\n\n${options.appendReminder}` : fallbackMsg;
+        await sendWhatsAppMessage(from, msg);
     } else {
+        const content = options?.appendReminder ? `${aiReply}\n\n${options.appendReminder}` : aiReply;
         const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
-        if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
-        else await sendWhatsAppMessage(from, aiReply);
-        if (options?.appendReminder) {
-            await sendWhatsAppMessage(from, options.appendReminder);
-        }
+        if (showBookButton) await sendWhatsAppButtons(from, content, ["Book Appointment"]);
+        else await sendWhatsAppMessage(from, content);
     }
 }
 
