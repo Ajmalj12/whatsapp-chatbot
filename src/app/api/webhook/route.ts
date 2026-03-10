@@ -1406,7 +1406,9 @@ export async function POST(req: Request) {
             }
 
             default:
-                await sendWhatsAppMessage(from, pick(defaultConfused));
+                await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                    fallbackMessage: pick(defaultConfused),
+                });
                 break;
         }
 
