@@ -856,44 +856,26 @@ export async function POST(req: Request) {
 
                 if (!selectedDeptName) {
                     console.log(`[Webhook] No department matched for "${text}"`);
-                    const looksLikeQuestion = text.includes('?') || text.length > 40 || /\b(innu|eathokke|drs?|indu|doctor|available|today|tomorrow)\b/i.test(cleanText);
-                    if (looksLikeQuestion && !interactiveId.startsWith('dept_')) {
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'CHAT', data: '{}' },
+                    if (!interactiveId.startsWith('dept_')) {
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                            appendReminder: "You can pick a department from the list above when you're ready.",
                         });
-                        const aiReply = await getAIResponse(text, undefined, session.language);
-                        const trimmed = aiReply.trim();
-                        const treatAsUnknownDept = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
-                        const useFallbackDept = treatAsUnknownDept || /\bKollam\b/i.test(aiReply);
-                        if (trimmed === 'CONNECT_AGENT' && !useFallbackDept) {
-                            await prisma.supportTicket.create({
-                                data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
-                            });
-                            await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
-                        } else if (useFallbackDept) {
-                            await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
-                        } else {
-                            const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
-                            if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
-                            else await sendWhatsAppMessage(from, aiReply);
-                        }
-                        return NextResponse.json({ status: 'ok' });
+                    } else {
+                        const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
+                        await sendWhatsAppList(
+                            from,
+                            `I couldn't find a department matching "${text}". Please select from the list 👇`,
+                            "Select Department",
+                            [{
+                                title: "Departments",
+                                rows: departmentsAll.slice(0, 10).map((dept: any) => ({
+                                    id: `dept_${dept.id}`,
+                                    title: dept.name,
+                                    description: dept.description?.slice(0, 72)
+                                }))
+                            }]
+                        );
                     }
-                    const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
-                    await sendWhatsAppList(
-                        from,
-                        `I couldn't find a department matching "${text}". Please select from the list 👇`,
-                        "Select Department",
-                        [{
-                            title: "Departments",
-                            rows: departmentsAll.slice(0, 10).map((dept: any) => ({
-                                id: `dept_${dept.id}`,
-                                title: dept.name,
-                                description: dept.description?.slice(0, 72)
-                            }))
-                        }]
-                    );
                     return NextResponse.json({ status: 'ok' });
                 }
 
@@ -998,64 +980,46 @@ export async function POST(req: Request) {
                     return await handleDoctorSelection(from, text, interactiveId, selectedDoctor, currentData);
                 } else {
                     console.log(`[Webhook] No doctor matched "${text}".`);
-                    const looksLikeQuestion = text.includes('?') || text.length > 40 || /\b(innu|eathokke|drs?|indu|doctor|available|today|tomorrow)\b/i.test(cleanText);
-                    if (looksLikeQuestion && !interactiveId.startsWith('doc_')) {
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'CHAT', data: '{}' },
+                    if (!interactiveId.startsWith('doc_')) {
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                            appendReminder: "You can pick a doctor from the list above when you're ready.",
                         });
-                        const aiReply = await getAIResponse(text, undefined, session.language);
-                        const trimmed = aiReply.trim();
-                        const treatAsUnknownDoc = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
-                        const useFallbackDoc = treatAsUnknownDoc || /\bKollam\b/i.test(aiReply);
-                        if (trimmed === 'CONNECT_AGENT' && !useFallbackDoc) {
-                            await prisma.supportTicket.create({
-                                data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
-                            });
-                            await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team. 👨‍💻", ["Book Appointment"]);
-                        } else if (useFallbackDoc) {
-                            await sendWhatsAppMessage(from, "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.");
-                        } else {
-                            const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
-                            if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
-                            else await sendWhatsAppMessage(from, aiReply);
-                        }
-                        break;
-                    }
-                    const doctorsAllList = await prisma.doctor.findMany({ where: { active: true } });
-                    if (doctorsAllList.length > 10) {
-                        const departments = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
-                        await prisma.session.update({
-                            where: { phone: from },
-                            data: { currentStep: 'DEPARTMENT_SELECTION' },
-                        });
-                        await sendWhatsAppList(
-                            from,
-                            "I couldn't find that doctor. Please choose a department first 👇",
-                            "Select Department",
-                            [{
-                                title: "Departments",
-                                rows: departments.slice(0, 10).map((dept: any) => ({
-                                    id: `dept_${dept.id}`,
-                                    title: dept.name,
-                                    description: dept.description?.slice(0, 72)
-                                }))
-                            }]
-                        );
                     } else {
-                        await sendWhatsAppList(
-                            from,
-                            "I couldn't find that doctor. Please choose from the list 👇",
-                            "Select Doctor",
-                            [{
-                                title: "Available Doctors",
-                                rows: doctorsAllList.slice(0, 10).map((d: any) => ({
-                                    id: `doc_${d.id}`,
-                                    title: d.name,
-                                    description: d.department
-                                }))
-                            }]
-                        );
+                        const doctorsAllList = await prisma.doctor.findMany({ where: { active: true } });
+                        if (doctorsAllList.length > 10) {
+                            const departments = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
+                            await prisma.session.update({
+                                where: { phone: from },
+                                data: { currentStep: 'DEPARTMENT_SELECTION' },
+                            });
+                            await sendWhatsAppList(
+                                from,
+                                "I couldn't find that doctor. Please choose a department first 👇",
+                                "Select Department",
+                                [{
+                                    title: "Departments",
+                                    rows: departments.slice(0, 10).map((dept: any) => ({
+                                        id: `dept_${dept.id}`,
+                                        title: dept.name,
+                                        description: dept.description?.slice(0, 72)
+                                    }))
+                                }]
+                            );
+                        } else {
+                            await sendWhatsAppList(
+                                from,
+                                "I couldn't find that doctor. Please choose from the list 👇",
+                                "Select Doctor",
+                                [{
+                                    title: "Available Doctors",
+                                    rows: doctorsAllList.slice(0, 10).map((d: any) => ({
+                                        id: `doc_${d.id}`,
+                                        title: d.name,
+                                        description: d.department
+                                    }))
+                                }]
+                            );
+                        }
                     }
                 }
                 break;
