@@ -2,7 +2,6 @@
 import { GoogleGenAI } from '@google/genai';
 import prisma from './prisma';
 
-// Initialize Gemini with hardcoded API key as requested
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 /**
