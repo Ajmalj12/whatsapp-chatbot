@@ -387,21 +387,204 @@ export async function POST(req: Request) {
                         data: { currentStep: 'CHAT', data: '{}' },
                     });
                     await sendWhatsAppMessage(from, "Perfect 👍 See you tomorrow!");
-                    if (!isDemo && appointmentId) {
-                        // Real appointment: already confirmed, no DB change needed
-                    }
                 } else if (text.trim() === '2') {
                     if (!isDemo && appointmentId) {
-                        await cancelAppointmentById(appointmentId);
+                        const apt = await prisma.appointment.findUnique({
+                            where: { id: appointmentId },
+                            select: { doctorId: true },
+                        });
+                        if (apt) {
+                            await prisma.session.update({
+                                where: { phone: from },
+                                data: {
+                                    currentStep: 'RESCHEDULE_DATE',
+                                    data: JSON.stringify({
+                                        rescheduleAppointmentId: appointmentId,
+                                        rescheduleDoctorId: apt.doctorId,
+                                    }),
+                                },
+                            });
+                            await sendWhatsAppMessage(
+                                from,
+                                "Sure, which date would you like to reschedule your appointment to? You can say 'tomorrow' or a specific date like 'Mar 15'.",
+                            );
+                            break;
+                        }
                     }
+                    // Demo or missing appointment: fall back to simple cancel-style behavior
                     await prisma.session.update({
                         where: { phone: from },
                         data: { currentStep: 'CHAT', data: '{}' },
                     });
-                    await sendWhatsAppMessage(from, "No problem. Say when you'd like to reschedule, or ask for available doctors to book a new slot.");
+                    await sendWhatsAppMessage(
+                        from,
+                        "No problem. Say when you'd like to reschedule, or ask for available doctors to book a new slot.",
+                    );
                 } else {
                     await sendWhatsAppMessage(from, "Please reply 1 to confirm or 2 to reschedule.");
                 }
+                break;
+            }
+
+            case 'RESCHEDULE_DATE': {
+                const { rescheduleAppointmentId, rescheduleDoctorId } = currentData;
+                if (!rescheduleAppointmentId || !rescheduleDoctorId) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'CHAT', data: '{}' },
+                    });
+                    await sendWhatsAppMessage(from, DEFAULT_AI_FALLBACK);
+                    break;
+                }
+
+                const parsedDate = parseRelativeTime(text) || (parseNaturalTime(text)?.date ?? null);
+                if (!parsedDate || isNaN(parsedDate.getTime())) {
+                    await sendWhatsAppMessage(
+                        from,
+                        "Please tell me a valid date, like 'tomorrow' or 'March 15', to reschedule your appointment.",
+                    );
+                    break;
+                }
+
+                const startOfDay = new Date(parsedDate);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDayDate = new Date(parsedDate);
+                endOfDayDate.setHours(23, 59, 59, 999);
+
+                const slotsForDate = await prisma.availability.findMany({
+                    where: {
+                        doctorId: rescheduleDoctorId,
+                        isBooked: false,
+                        startTime: {
+                            gte: startOfDay,
+                            lte: endOfDayDate,
+                        },
+                    },
+                    orderBy: { startTime: 'asc' },
+                });
+
+                const dateStr = startOfDay.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                });
+
+                if (slotsForDate.length === 0) {
+                    await sendWhatsAppMessage(
+                        from,
+                        `Sorry, there are no available slots on ${dateStr}. Please tell me another date to reschedule to.`,
+                    );
+                    break;
+                }
+
+                const slotsPayload = slotsForDate.slice(0, 10).map((s: any) => ({ id: s.id, startTime: s.startTime }));
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: {
+                        currentStep: 'RESCHEDULE_TIME',
+                        data: JSON.stringify({
+                            ...currentData,
+                            rescheduleAppointmentId,
+                            rescheduleDoctorId,
+                            rescheduleSelectedDate: startOfDay.toISOString(),
+                            rescheduleAvailableSlots: slotsPayload,
+                        }),
+                    },
+                });
+
+                await sendWhatsAppList(
+                    from,
+                    `Here are the available slots on ${dateStr} for rescheduling your appointment 👇`,
+                    'Select Time',
+                    [
+                        {
+                            title: 'Available Slots',
+                            rows: slotsForDate.slice(0, 10).map((slot: any) => ({
+                                id: `resched_slot_${slot.id}`,
+                                title: slot.startTime.toLocaleTimeString('en-US', {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true,
+                                }),
+                            })),
+                        },
+                    ],
+                );
+                break;
+            }
+
+            case 'RESCHEDULE_TIME': {
+                const { rescheduleAppointmentId } = currentData;
+                if (!rescheduleAppointmentId) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'CHAT', data: '{}' },
+                    });
+                    await sendWhatsAppMessage(from, DEFAULT_AI_FALLBACK);
+                    break;
+                }
+
+                if (!interactiveId || !interactiveId.startsWith('resched_slot_')) {
+                    await sendWhatsAppMessage(from, 'Please select a time from the list above to reschedule.');
+                    break;
+                }
+
+                const newSlotId = interactiveId.replace('resched_slot_', '');
+
+                const apt = await prisma.appointment.findUnique({
+                    where: { id: rescheduleAppointmentId },
+                    select: { availabilityId: true, doctorId: true },
+                });
+                if (!apt) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'CHAT', data: '{}' },
+                    });
+                    await sendWhatsAppMessage(
+                        from,
+                        "I couldn't find your appointment details. Please try asking about your appointments again.",
+                    );
+                    break;
+                }
+
+                const newSlot = await prisma.availability.findUnique({
+                    where: { id: newSlotId },
+                    include: { doctor: true },
+                });
+                if (!newSlot || newSlot.isBooked || newSlot.doctorId !== apt.doctorId) {
+                    await sendWhatsAppMessage(
+                        from,
+                        'That slot is no longer available. Please ask again for available times to reschedule.',
+                    );
+                    break;
+                }
+
+                await prisma.$transaction([
+                    prisma.availability.update({
+                        where: { id: apt.availabilityId },
+                        data: { isBooked: false },
+                    }),
+                    prisma.availability.update({
+                        where: { id: newSlotId },
+                        data: { isBooked: true },
+                    }),
+                    prisma.appointment.update({
+                        where: { id: rescheduleAppointmentId },
+                        data: { availabilityId: newSlotId },
+                    }),
+                ]);
+
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: { currentStep: 'CHAT', data: '{}' },
+                });
+
+                const msgTime = formatAppointmentTime(newSlot.startTime);
+                const docName = newSlot.doctor ? formatDoctorName(newSlot.doctor.name) : 'the doctor';
+                await sendWhatsAppMessage(
+                    from,
+                    `Done 👍 Your appointment has been moved to ${msgTime} with ${docName}.`,
+                );
                 break;
             }
 
@@ -414,7 +597,10 @@ export async function POST(req: Request) {
 
                 // Appointment access intents: view, cancel, reschedule
                 const normalizedFrom = normalizePhone(from);
-                const hasAppointmentWords = /\b(appointment|booking|booked|slot|resched|cancel|time|when|timing|samayam|naale|innu)\b/i.test(cleanText);
+                const hasAppointmentWords =
+                    /\b(appointment|appointm(?:ent)?|booking|booked|slot|resched|reschedule|reshedule|re[\s-]?schedule|cancel|time|when|timing|samayam|naale|innu)\b/i.test(
+                        cleanText,
+                    );
                 if (hasAppointmentWords) {
                     const intentResult = await classifyAppointmentIntent(text, session.language);
                     if (intentResult.intent === 'VIEW_UPCOMING') {
@@ -451,18 +637,31 @@ export async function POST(req: Request) {
                         }
                         if (upcoming.length === 1) {
                             const apt = upcoming[0];
-                            await cancelAppointmentById(apt.id);
-                            const msgTime = apt.availability?.startTime ? formatAppointmentTime(apt.availability.startTime) : 'your appointment time';
-                            const docName = apt.doctor ? formatDoctorName(apt.doctor.name) : 'the doctor';
                             await prisma.session.update({
                                 where: { phone: from },
-                                data: { currentStep: 'CHAT', data: '{}' },
+                                data: {
+                                    currentStep: 'RESCHEDULE_DATE',
+                                    data: JSON.stringify({
+                                        rescheduleAppointmentId: apt.id,
+                                        rescheduleDoctorId: apt.doctorId,
+                                    }),
+                                },
                             });
-                            await sendWhatsAppMessage(from, `Okay, I've cancelled your appointment on ${msgTime} with ${docName}. Tell me when you'd like to book a new appointment or which doctor you need.`);
+                            const msgTime = apt.availability?.startTime
+                                ? formatAppointmentTime(apt.availability.startTime)
+                                : 'your current appointment time';
+                            const docName = apt.doctor ? formatDoctorName(apt.doctor.name) : 'the doctor';
+                            await sendWhatsAppMessage(
+                                from,
+                                `You currently have an appointment on ${msgTime} with ${docName}.\nWhich date would you like to reschedule it to? You can say 'tomorrow' or a specific date like 'Mar 15'.`,
+                            );
                             break;
                         }
                         const list = formatAppointmentsForUser(upcoming);
-                        await sendWhatsAppMessage(from, `You have multiple upcoming appointments:\n${list}\n\nPlease type which one you want to reschedule, and I'll help you.`);
+                        await sendWhatsAppMessage(
+                            from,
+                            `You have multiple upcoming appointments:\n${list}\n\nPlease type which one you want to reschedule (for example, the date or doctor name), and I'll help you.`,
+                        );
                         break;
                     }
                 }

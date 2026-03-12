@@ -51,7 +51,9 @@ function parseJsonFromContent(content: string): Record<string, unknown> | null {
     }
 }
 
-const APPOINTMENT_KEYWORD_HINTS = /\b(appointment|booking|booked|slot|resched|cancel|time|when|timing|samayam|naale|innu)\b/i;
+// Broad keyword hints including common misspellings (e.g. "reshedule") and Manglish/Malayalam terms.
+const APPOINTMENT_KEYWORD_HINTS =
+    /\b(appointment|appointm(?:ent)?|booking|booked|slot|resched|reschedule|reshedule|re[\s-]?schedule|cancel|time|when|timing|samayam|naale|innu)\b/i;
 
 export async function classifyAppointmentIntent(
     userMessage: string,
