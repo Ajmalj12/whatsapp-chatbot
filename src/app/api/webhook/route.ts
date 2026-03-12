@@ -7,6 +7,9 @@ import { pick, askAgeForName, reAskName, reAskAge, invalidAge, confirmBooking, c
 import { parseNaturalTime, parseRelativeTime, containsTimeRequest, formatAppointmentTime } from '@/lib/timeParser';
 import { findBestSlots, formatSlotMatches, getDoctorsWithSlotsOnDate } from '@/lib/slotMatcher';
 import { formatDoctorName, formatBulletList } from '@/lib/formatReply';
+import { classifyAppointmentIntent } from '@/lib/appointmentIntent';
+import { normalizePhone } from '@/lib/phone';
+import { getUpcomingAppointmentsForPhone, formatAppointmentsForUser, cancelAppointmentById } from '@/lib/appointmentHelpers';
 
 const DEFAULT_AI_FALLBACK = "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.";
 // Detect obviously wrong, self-referential AI replies (e.g. talking about its own family or being an AI model)
@@ -389,20 +392,7 @@ export async function POST(req: Request) {
                     }
                 } else if (text.trim() === '2') {
                     if (!isDemo && appointmentId) {
-                        const apt = await prisma.appointment.findUnique({
-                            where: { id: appointmentId },
-                            select: { availabilityId: true },
-                        });
-                        if (apt) {
-                            await prisma.appointment.update({
-                                where: { id: appointmentId },
-                                data: { status: 'Cancelled' },
-                            });
-                            await prisma.availability.update({
-                                where: { id: apt.availabilityId },
-                                data: { isBooked: false },
-                            });
-                        }
+                        await cancelAppointmentById(appointmentId);
                     }
                     await prisma.session.update({
                         where: { phone: from },
@@ -420,6 +410,61 @@ export async function POST(req: Request) {
                 if (isGreeting) {
                     await sendWhatsAppMessage(from, pick(welcome));
                     break;
+                }
+
+                // Appointment access intents: view, cancel, reschedule
+                const normalizedFrom = normalizePhone(from);
+                const hasAppointmentWords = /\b(appointment|booking|booked|slot|resched|cancel|time|when|timing|samayam|naale|innu)\b/i.test(cleanText);
+                if (hasAppointmentWords) {
+                    const intentResult = await classifyAppointmentIntent(text, session.language);
+                    if (intentResult.intent === 'VIEW_UPCOMING') {
+                        const upcoming = await getUpcomingAppointmentsForPhone(normalizedFrom);
+                        if (upcoming.length === 0) {
+                            await sendWhatsAppMessage(from, "You don't have any upcoming appointments right now.");
+                        } else {
+                            const list = formatAppointmentsForUser(upcoming);
+                            await sendWhatsAppMessage(from, `Here are your upcoming appointments:\n${list}`);
+                        }
+                        break;
+                    } else if (intentResult.intent === 'CANCEL') {
+                        const upcoming = await getUpcomingAppointmentsForPhone(normalizedFrom);
+                        if (upcoming.length === 0) {
+                            await sendWhatsAppMessage(from, "You don't have any upcoming appointments to cancel.");
+                            break;
+                        }
+                        if (upcoming.length === 1) {
+                            const apt = upcoming[0];
+                            await cancelAppointmentById(apt.id);
+                            const msgTime = apt.availability?.startTime ? formatAppointmentTime(apt.availability.startTime) : 'your appointment time';
+                            const docName = apt.doctor ? formatDoctorName(apt.doctor.name) : 'the doctor';
+                            await sendWhatsAppMessage(from, `Your appointment on ${msgTime} with ${docName} has been cancelled.`);
+                            break;
+                        }
+                        const list = formatAppointmentsForUser(upcoming);
+                        await sendWhatsAppMessage(from, `You have multiple upcoming appointments:\n${list}\n\nPlease type which date or doctor you want to cancel, and I'll help you.`);
+                        break;
+                    } else if (intentResult.intent === 'RESCHEDULE') {
+                        const upcoming = await getUpcomingAppointmentsForPhone(normalizedFrom);
+                        if (upcoming.length === 0) {
+                            await sendWhatsAppMessage(from, "You don't have any upcoming appointments to reschedule.");
+                            break;
+                        }
+                        if (upcoming.length === 1) {
+                            const apt = upcoming[0];
+                            await cancelAppointmentById(apt.id);
+                            const msgTime = apt.availability?.startTime ? formatAppointmentTime(apt.availability.startTime) : 'your appointment time';
+                            const docName = apt.doctor ? formatDoctorName(apt.doctor.name) : 'the doctor';
+                            await prisma.session.update({
+                                where: { phone: from },
+                                data: { currentStep: 'CHAT', data: '{}' },
+                            });
+                            await sendWhatsAppMessage(from, `Okay, I've cancelled your appointment on ${msgTime} with ${docName}. Tell me when you'd like to book a new appointment or which doctor you need.`);
+                            break;
+                        }
+                        const list = formatAppointmentsForUser(upcoming);
+                        await sendWhatsAppMessage(from, `You have multiple upcoming appointments:\n${list}\n\nPlease type which one you want to reschedule, and I'll help you.`);
+                        break;
+                    }
                 }
 
                 const isAvailabilityForDate = /\b(tomorrow|today)\b.*\b(available|open|free|slot|who)\b|\b(available|open|free|who).*(tomorrow|today)\b|(tomorrow|today)\s*(available|open)?\s*\??/i.test(cleanText) ||

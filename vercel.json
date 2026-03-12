@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/session-timeout",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/reminders-one-hour",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

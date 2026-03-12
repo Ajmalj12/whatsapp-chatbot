@@ -34,6 +34,33 @@ export async function POST(req: Request) {
     }
 }
 
+export async function PUT(req: Request) {
+    try {
+        const body = await req.json();
+        const { id, question, answer } = body as { id?: string; question?: string; answer?: string };
+
+        if (!id) {
+            return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+        }
+
+        if (!answer) {
+            return NextResponse.json({ error: 'Answer is required' }, { status: 400 });
+        }
+
+        const updatedItem = await prisma.knowledgeBase.update({
+            where: { id },
+            data: {
+                question: question ?? '',
+                answer,
+            },
+        });
+
+        return NextResponse.json(updatedItem);
+    } catch (error) {
+        return NextResponse.json({ error: 'Failed to update entry' }, { status: 500 });
+    }
+}
+
 export async function DELETE(req: Request) {
     try {
         const { searchParams } = new URL(req.url);
