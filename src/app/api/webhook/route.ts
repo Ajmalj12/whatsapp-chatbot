@@ -9,6 +9,9 @@ import { findBestSlots, formatSlotMatches, getDoctorsWithSlotsOnDate } from '@/l
 import { formatDoctorName, formatBulletList } from '@/lib/formatReply';
 
 const DEFAULT_AI_FALLBACK = "I'm not sure about that. You can ask about appointments, doctor availability, or say Hi to start over.";
+// Detect obviously wrong, self-referential AI replies (e.g. talking about its own family or being an AI model)
+const SELF_REF_HALLUCINATION =
+    /\b(I am (an )?(AI|artificial intelligence|language model)|as an AI|I don't have (a )?(father|mother|parents|family)|I don't have (feelings|a body|a physical form))\b/i;
 
 /** Send AI reply with UNKNOWN_QUERY / CONNECT_AGENT / safety handling. Used when user message is not a valid selection. */
 async function sendAIReplyAndMaybeButton(
@@ -22,7 +25,8 @@ async function sendAIReplyAndMaybeButton(
     const trimmed = aiReply.trim();
     const treatAsUnknown = trimmed === 'UNKNOWN_QUERY' || (trimmed.length < 200 && /\bunknown_query\b/i.test(trimmed));
     const hasHallucinatedLocation = /\bKollam\b/i.test(aiReply);
-    const useFallback = treatAsUnknown || hasHallucinatedLocation;
+    const hasSelfHallucination = SELF_REF_HALLUCINATION.test(aiReply);
+    const useFallback = treatAsUnknown || hasHallucinatedLocation || hasSelfHallucination;
     const fallbackMsg = options?.fallbackMessage ?? DEFAULT_AI_FALLBACK;
 
     if (trimmed === 'CONNECT_AGENT' && !useFallback) {
@@ -663,7 +667,10 @@ export async function POST(req: Request) {
                         });
                         await sendWhatsAppButtons(from, "I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
                     } else if (useFallbackAv) {
-                        await sendWhatsAppMessage(from, "Which doctor would you like to book? Please type the doctor's name.");
+                        // Instead of repeating a hardcoded booking question, use the safer AI helper with a generic fallback.
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                            fallbackMessage: `${DEFAULT_AI_FALLBACK}\n\nYou can also tell me the doctor's name or department to continue booking.`,
+                        });
                     } else {
                         const showBookButton = /\b(book|appointment|available|slot|doctor|consult)\b/i.test(cleanText);
                         if (showBookButton) await sendWhatsAppButtons(from, aiReply, ["Book Appointment"]);
@@ -856,9 +863,7 @@ export async function POST(req: Request) {
                 if (!selectedDeptName) {
                     console.log(`[Webhook] No department matched for "${text}"`);
                     if (!interactiveId.startsWith('dept_')) {
-                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                            appendReminder: "You can pick a department from the list above when you're ready.",
-                        });
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                     } else {
                         const departmentsAll = await prisma.department.findMany({ where: { active: true }, orderBy: { displayOrder: 'asc' } });
                         await sendWhatsAppList(
@@ -980,9 +985,7 @@ export async function POST(req: Request) {
                 } else {
                     console.log(`[Webhook] No doctor matched "${text}".`);
                     if (!interactiveId.startsWith('doc_')) {
-                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                            appendReminder: "You can pick a doctor from the list above when you're ready.",
-                        });
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                     } else {
                         const doctorsAllList = await prisma.doctor.findMany({ where: { active: true } });
                         if (doctorsAllList.length > 10) {
@@ -1139,9 +1142,7 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, "Great! Please enter the Patient's Name:");
                 } else {
-                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                        appendReminder: "When you're ready, select one of the alternative time slots above.",
-                    });
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                 }
                 break;
             }
@@ -1198,9 +1199,7 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSltShortcut.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                        appendReminder: "When you're ready, pick a time from the list above or type it (e.g. 11:00 AM).",
-                    });
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                 }
                 break;
             }
@@ -1230,9 +1229,7 @@ export async function POST(req: Request) {
                     if (looksLikeDateListFormat) {
                         await sendWhatsAppMessage(from, "Sorry, no slots available for that date. Please choose another date.");
                     } else {
-                        await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                            appendReminder: "When you're ready, pick a date from the list above for your appointment.",
-                        });
+                        await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                     }
                     return NextResponse.json({ status: 'ok' });
                 }
@@ -1288,9 +1285,7 @@ export async function POST(req: Request) {
                     });
                     await sendWhatsAppMessage(from, `✅ Great! Your appointment is set for ${formatAppointmentTime(matchedSlt.startTime)}.\n\nPlease enter the Patient's Name:`);
                 } else {
-                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
-                        appendReminder: "When you're ready, pick a time from the list above or type it (e.g. 11:00 AM).",
-                    });
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session);
                 }
                 break;
             }

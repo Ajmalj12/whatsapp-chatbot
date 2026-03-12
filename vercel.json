@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/scheduled-reminders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/session-timeout",
+      "schedule": "*/2 * * * *"
     }
   ]
 }
