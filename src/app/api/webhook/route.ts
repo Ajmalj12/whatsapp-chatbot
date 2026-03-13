@@ -588,6 +588,138 @@ export async function POST(req: Request) {
                 break;
             }
 
+            case 'CANCEL_SELECT': {
+                const candidates = (currentData.cancelCandidates || []) as any[];
+                if (!Array.isArray(candidates) || candidates.length === 0) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'CHAT', data: '{}' },
+                    });
+                    await sendWhatsAppMessage(from, DEFAULT_AI_FALLBACK);
+                    break;
+                }
+
+                const trimmed = text.trim();
+                let selected = null as any;
+
+                // Number-based selection: 1, 2, ...
+                const num = parseInt(trimmed, 10);
+                if (!Number.isNaN(num) && num >= 1 && num <= candidates.length) {
+                    selected = candidates[num - 1];
+                } else {
+                    const lower = trimmed.toLowerCase();
+                    // Try match by doctor name
+                    selected =
+                        candidates.find((c) => c.doctorName && lower.includes(String(c.doctorName).toLowerCase())) ||
+                        null;
+                    // Try match by date string
+                    if (!selected) {
+                        selected =
+                            candidates.find((c) => {
+                                if (!c.startTime) return false;
+                                const d = new Date(c.startTime);
+                                const dateStr = d
+                                    .toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                    })
+                                    .toLowerCase();
+                                return lower.includes(dateStr);
+                            }) || null;
+                    }
+                }
+
+                if (!selected) {
+                    await sendWhatsAppMessage(
+                        from,
+                        'I could not match that to one appointment. Please reply with the doctor name (e.g. "Dr. Kevin") or the number (1, 2, ...).',
+                    );
+                    break;
+                }
+
+                await cancelAppointmentById(selected.id);
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: { currentStep: 'CHAT', data: '{}' },
+                });
+
+                const startTime = selected.startTime ? new Date(selected.startTime) : null;
+                const msgTime = startTime ? formatAppointmentTime(startTime) : 'your appointment time';
+                const docName = selected.doctorName ? formatDoctorName(selected.doctorName) : 'the doctor';
+                await sendWhatsAppMessage(from, `Your appointment on ${msgTime} with ${docName} has been cancelled.`);
+                break;
+            }
+
+            case 'RESCHEDULE_SELECT': {
+                const candidates = (currentData.rescheduleCandidates || []) as any[];
+                if (!Array.isArray(candidates) || candidates.length === 0) {
+                    await prisma.session.update({
+                        where: { phone: from },
+                        data: { currentStep: 'CHAT', data: '{}' },
+                    });
+                    await sendWhatsAppMessage(from, DEFAULT_AI_FALLBACK);
+                    break;
+                }
+
+                const trimmed = text.trim();
+                let selected = null as any;
+
+                const num = parseInt(trimmed, 10);
+                if (!Number.isNaN(num) && num >= 1 && num <= candidates.length) {
+                    selected = candidates[num - 1];
+                } else {
+                    const lower = trimmed.toLowerCase();
+                    selected =
+                        candidates.find((c) => c.doctorName && lower.includes(String(c.doctorName).toLowerCase())) ||
+                        null;
+                    if (!selected) {
+                        selected =
+                            candidates.find((c) => {
+                                if (!c.startTime) return false;
+                                const d = new Date(c.startTime);
+                                const dateStr = d
+                                    .toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                    })
+                                    .toLowerCase();
+                                return lower.includes(dateStr);
+                            }) || null;
+                    }
+                }
+
+                if (!selected) {
+                    await sendWhatsAppMessage(
+                        from,
+                        'I could not match that to one appointment. Please reply with the doctor name (e.g. "Dr. Kevin") or the number (1, 2, ...).',
+                    );
+                    break;
+                }
+
+                await prisma.session.update({
+                    where: { phone: from },
+                    data: {
+                        currentStep: 'RESCHEDULE_DATE',
+                        data: JSON.stringify({
+                            ...currentData,
+                            rescheduleAppointmentId: selected.id,
+                            rescheduleDoctorId: selected.doctorId || null,
+                        }),
+                    },
+                });
+
+                const startTime = selected.startTime ? new Date(selected.startTime) : null;
+                const msgTime = startTime ? formatAppointmentTime(startTime) : 'your current appointment time';
+                const docName = selected.doctorName ? formatDoctorName(selected.doctorName) : 'the doctor';
+                await sendWhatsAppMessage(
+                    from,
+                    `You currently have an appointment on ${msgTime} with ${docName}.\nWhich date would you like to reschedule it to? You can say 'tomorrow' or a specific date like 'Mar 15'.`,
+                );
+                break;
+            }
+
             case 'CHAT': {
                 const isGreeting = /^(hi|hello|hey|vanakkam|namaskaram|hai|hlw|hlo)$/i.test(cleanText) || cleanText === 'hi' || cleanText === 'hello';
                 if (isGreeting) {
@@ -627,7 +759,25 @@ export async function POST(req: Request) {
                             break;
                         }
                         const list = formatAppointmentsForUser(upcoming);
-                        await sendWhatsAppMessage(from, `You have multiple upcoming appointments:\n${list}\n\nPlease type which date or doctor you want to cancel, and I'll help you.`);
+                        const candidates = upcoming.map((apt: any) => ({
+                            id: apt.id,
+                            doctorName: apt.doctor?.name || '',
+                            startTime: apt.availability?.startTime ? apt.availability.startTime.toISOString() : null,
+                        }));
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'CANCEL_SELECT',
+                                data: JSON.stringify({
+                                    ...currentData,
+                                    cancelCandidates: candidates,
+                                }),
+                            },
+                        });
+                        await sendWhatsAppMessage(
+                            from,
+                            `You have multiple upcoming appointments:\n${list}\n\nPlease type the doctor's name (for example, \"Dr. Kevin\") or the number (1, 2, ...) of the appointment you want to cancel.`,
+                        );
                         break;
                     } else if (intentResult.intent === 'RESCHEDULE') {
                         const upcoming = await getUpcomingAppointmentsForPhone(normalizedFrom);
@@ -658,9 +808,24 @@ export async function POST(req: Request) {
                             break;
                         }
                         const list = formatAppointmentsForUser(upcoming);
+                        const candidates = upcoming.map((apt: any) => ({
+                            id: apt.id,
+                            doctorName: apt.doctor?.name || '',
+                            startTime: apt.availability?.startTime ? apt.availability.startTime.toISOString() : null,
+                        }));
+                        await prisma.session.update({
+                            where: { phone: from },
+                            data: {
+                                currentStep: 'RESCHEDULE_SELECT',
+                                data: JSON.stringify({
+                                    ...currentData,
+                                    rescheduleCandidates: candidates,
+                                }),
+                            },
+                        });
                         await sendWhatsAppMessage(
                             from,
-                            `You have multiple upcoming appointments:\n${list}\n\nPlease type which one you want to reschedule (for example, the date or doctor name), and I'll help you.`,
+                            `You have multiple upcoming appointments:\n${list}\n\nPlease type which one you want to reschedule (for example, the doctor's name or the number 1/2/3).`,
                         );
                         break;
                     }
