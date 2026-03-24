@@ -84,7 +84,7 @@ export default function TicketsPage() {
 
     return (
         <AdminLayout fullWidth={true}>
-            <div className="flex h-[calc(100vh-64px)] bg-gray-50 font-sans">
+            <div className="flex h-[calc(100vh-108px)] xl:h-[calc(100vh-64px)] bg-gray-50 font-sans">
                 {/* Sidebar */}
                 <div className="w-80 border-r border-gray-200 bg-white flex flex-col shadow-sm">
                     <div className="h-14 px-4 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center shrink-0">
