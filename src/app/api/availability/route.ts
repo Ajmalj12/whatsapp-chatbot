@@ -4,8 +4,14 @@ import prisma from '@/lib/prisma';
 export async function GET() {
     try {
         const availability = await prisma.availability.findMany({
+            where: {
+                startTime: { gte: new Date() },
+            },
             include: {
                 doctor: true,
+            },
+            orderBy: {
+                startTime: 'asc',
             },
         });
         return NextResponse.json(availability);
