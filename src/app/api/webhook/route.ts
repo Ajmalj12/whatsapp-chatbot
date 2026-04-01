@@ -15,6 +15,8 @@ const DEFAULT_AI_FALLBACK = "I'm not sure about that. You can ask about appointm
 // Detect obviously wrong, self-referential AI replies (e.g. talking about its own family or being an AI model)
 const SELF_REF_HALLUCINATION =
     /\b(I am (an )?(AI|artificial intelligence|language model)|as an AI|I don't have (a )?(father|mother|parents|family)|I don't have (feelings|a body|a physical form))\b/i;
+const HUMAN_SUPPORT_REQUEST =
+    /\b(talk\s*to\s*(support|human|agent)|connect\s*(me\s*)?to\s*(support|human|agent)|human\s*(support|agent)|live\s*(chat|agent)|customer\s*(support|care)|support\s*team|transfer\s*(me\s*)?to\s*(human|support))\b/i;
 
 /** Send AI reply with UNKNOWN_QUERY / CONNECT_AGENT / safety handling. Used when user message is not a valid selection. */
 async function sendAIReplyAndMaybeButton(
@@ -22,7 +24,7 @@ async function sendAIReplyAndMaybeButton(
     text: string,
     cleanText: string,
     session: { language: string | null },
-    options?: { appendReminder?: string; fallbackMessage?: string }
+    options?: { appendReminder?: string; fallbackMessage?: string; disableEscalation?: boolean }
 ): Promise<void> {
     const aiReply = await getAIResponse(text, undefined, session.language);
     const trimmed = aiReply.trim();
@@ -32,11 +34,14 @@ async function sendAIReplyAndMaybeButton(
     const useFallback = treatAsUnknown || hasHallucinatedLocation || hasSelfHallucination;
     const fallbackMsg = options?.fallbackMessage ?? DEFAULT_AI_FALLBACK;
 
-    if (trimmed === 'CONNECT_AGENT' && !useFallback) {
+    if (trimmed === 'CONNECT_AGENT' && !useFallback && !options?.disableEscalation) {
         await prisma.supportTicket.create({
             data: { phone: from, query: text, status: 'OPEN', messages: { create: { sender: 'USER', content: text } } },
         });
         await sendWhatsAppButtons(from, "Sorry, I don't have the answer to that. I am connecting you to our team and they will reply shortly. 👨‍💻", ["Book Appointment"]);
+    } else if (trimmed === 'CONNECT_AGENT' && options?.disableEscalation) {
+        const msg = options?.appendReminder ? `${DEFAULT_AI_FALLBACK}\n\n${options.appendReminder}` : DEFAULT_AI_FALLBACK;
+        await sendWhatsAppMessage(from, msg);
     } else if (useFallback) {
         const msg = options?.appendReminder ? `${fallbackMsg}\n\n${options.appendReminder}` : fallbackMsg;
         await sendWhatsAppMessage(from, msg);
@@ -84,6 +89,7 @@ export async function POST(req: Request) {
             where: { phone: from, status: 'OPEN' }
         });
 
+        let ticketMessageAlreadyLogged = false;
         if (activeTicket) {
             // Special case: If user clicks "Book Appointment" button, close ticket and start booking
             if (text === 'Book Appointment') {
@@ -112,7 +118,7 @@ export async function POST(req: Request) {
                     content: text
                 }
             });
-            return NextResponse.json({ status: 'ok' });
+            ticketMessageAlreadyLogged = true;
         }
 
         // 2. MESSAGE-FIRST: Greeting or reset always resets to CHAT and sends welcome (human-like)
@@ -724,6 +730,34 @@ export async function POST(req: Request) {
                 const isGreeting = /^(hi|hello|hey|vanakkam|namaskaram|hai|hlw|hlo)$/i.test(cleanText) || cleanText === 'hi' || cleanText === 'hello';
                 if (isGreeting) {
                     await sendWhatsAppMessage(from, pick(welcome));
+                    break;
+                }
+
+                // Explicit human/support request: open website support chat (ticket), confirm transfer, and keep AI active.
+                if (HUMAN_SUPPORT_REQUEST.test(cleanText)) {
+                    if (!activeTicket) {
+                        await prisma.supportTicket.create({
+                            data: {
+                                phone: from,
+                                query: text,
+                                status: 'OPEN',
+                                messages: { create: { sender: 'USER', content: text } },
+                            },
+                        });
+                    } else if (!ticketMessageAlreadyLogged) {
+                        await prisma.ticketMessage.create({
+                            data: {
+                                ticketId: activeTicket.id,
+                                sender: 'USER',
+                                content: text,
+                            },
+                        });
+                    }
+
+                    await sendAIReplyAndMaybeButton(from, text, cleanText, session, {
+                        appendReminder: "Your chat was transferred to a human on our website support chat. Our AI can still help you here while the team joins.",
+                        disableEscalation: true,
+                    });
                     break;
                 }
 
