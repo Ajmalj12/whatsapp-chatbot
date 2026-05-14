@@ -9,6 +9,8 @@ type Stats = {
   todayAppointments: number;
   activeSlots: number;
   totalPatients: number;
+  totalDepartments: number;
+  totalSubDepartments: number;
 } | null;
 
 export default function Home() {
@@ -27,108 +29,108 @@ export default function Home() {
         todayAppointments: 0,
         activeSlots: 0,
         totalPatients: 0,
+        totalDepartments: 0,
+        totalSubDepartments: 0,
       }))
       .finally(() => setLoading(false));
   }, []);
 
-  const statCards = stats
-    ? [
-        { label: 'Total Doctors', value: String(stats.totalDoctors), color: 'bg-blue-50 text-blue-700', icon: '🩺' },
-        { label: "Today's Appointments", value: String(stats.todayAppointments), color: 'bg-emerald-50 text-emerald-700', icon: '📅' },
-        { label: 'Active Slots', value: String(stats.activeSlots), color: 'bg-orange-50 text-orange-700', icon: '⏰' },
-        { label: 'Total Bookings', value: String(stats.totalPatients), color: 'bg-purple-50 text-purple-700', icon: '👥' },
-      ]
-    : [
-        { label: 'Total Doctors', value: '–', color: 'bg-blue-50 text-blue-700', icon: '🩺' },
-        { label: "Today's Appointments", value: '–', color: 'bg-emerald-50 text-emerald-700', icon: '📅' },
-        { label: 'Active Slots', value: '–', color: 'bg-orange-50 text-orange-700', icon: '⏰' },
-        { label: 'Total Bookings', value: '–', color: 'bg-purple-50 text-purple-700', icon: '👥' },
-      ];
+  const toneBars: Record<string, string> = {
+    emerald: 'bg-emerald-500',
+    blue: 'bg-blue-500',
+    violet: 'bg-violet-500',
+    amber: 'bg-amber-500',
+    cyan: 'bg-cyan-500',
+    rose: 'bg-rose-500',
+  };
+
+  const statCards = [
+    { label: 'Active doctors', value: stats?.totalDoctors, tone: 'emerald' },
+    { label: 'Departments', value: stats?.totalDepartments, tone: 'blue' },
+    { label: 'Sub departments', value: stats?.totalSubDepartments, tone: 'violet' },
+    { label: 'Today bookings', value: stats?.todayAppointments, tone: 'amber' },
+    { label: 'Open slots', value: stats?.activeSlots, tone: 'cyan' },
+    { label: 'Total bookings', value: stats?.totalPatients, tone: 'rose' },
+  ];
+
+  const actions = [
+    { href: '/departments', title: 'Build service hierarchy', detail: 'Add departments and sub departments before assigning doctors.' },
+    { href: '/doctors', title: 'Add doctors', detail: 'Place providers inside the right department or sub department.' },
+    { href: '/availability', title: 'Publish slots', detail: 'Create the timings patients can book from WhatsApp.' },
+    { href: '/tickets', title: 'Review support', detail: 'Reply to escalated patient queries from one place.' },
+  ];
 
   return (
     <AdminLayout>
-      <div className="space-y-8">
-        <header>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Welcome back! Here&apos;s what&apos;s happening at CarePlus Clinic today.
-          </p>
-        </header>
-
-        {loading && (
-          <p className="text-sm text-slate-500">Loading stats…</p>
-        )}
-
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100 transition-all hover:shadow-md"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{stat.label}</p>
-                  <p className="mt-2 text-2xl font-bold text-slate-900">{stat.value}</p>
+      <div className="space-y-6">
+        <header className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="grid gap-6 p-6 lg:grid-cols-[1.5fr_1fr] lg:p-8">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Operations overview</p>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Clinic portal</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                Manage departments, sub departments, doctors, availability, bookings, support tickets, and knowledge used by the WhatsApp assistant.
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-950 p-5 text-white">
+              <p className="text-sm font-semibold text-slate-300">System status</p>
+              <div className="mt-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">WhatsApp bot</span>
+                  <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-300">Live</span>
                 </div>
-                <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-2xl ${stat.color}`}>
-                  {stat.icon}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Database</span>
+                  <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-xs font-bold text-blue-300">Connected</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </header>
+
+        {loading && <p className="text-sm text-slate-500">Loading portal metrics...</p>}
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          {statCards.map((stat) => (
+            <div key={stat.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className={`mb-4 h-1.5 w-10 rounded-full ${toneBars[stat.tone]}`}></div>
+              <p className="text-xs font-semibold uppercase text-slate-500">{stat.label}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{stat.value ?? '-'}</p>
             </div>
           ))}
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm ring-1 ring-slate-100">
-            <h2 className="text-lg font-bold text-slate-900">Quick Actions</h2>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Link
-                href="/doctors"
-                className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-left transition-all hover:bg-emerald-50 hover:border-emerald-100 group"
-              >
-                <span className="text-lg text-emerald-600 group-hover:scale-110 transition-transform">➕</span>
-                <span className="font-semibold text-slate-900">Add Doctor</span>
-                <span className="text-xs text-slate-500">Register a new specialist</span>
-              </Link>
-              <Link
-                href="/availability"
-                className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-left transition-all hover:bg-orange-50 hover:border-orange-100 group"
-              >
-                <span className="text-lg text-orange-600 group-hover:scale-110 transition-transform">⚡</span>
-                <span className="font-semibold text-slate-900">Update Slots</span>
-                <span className="text-xs text-slate-500">Change today&apos;s availability</span>
-              </Link>
-              <Link
-                href="/knowledge"
-                className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-4 text-left transition-all hover:bg-blue-50 hover:border-blue-100 group sm:col-span-2"
-              >
-                <span className="text-lg text-blue-600 group-hover:scale-110 transition-transform">🧠</span>
-                <span className="font-semibold text-slate-900">Knowledge Base</span>
-                <span className="text-xs text-slate-500">Manage AI training data & FAQs</span>
-              </Link>
+        <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="font-bold text-slate-950">Work queue</h2>
+              <p className="text-sm text-slate-500">Start with the directory, then publish slots for booking.</p>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              {actions.map((action) => (
+                <Link key={action.href} href={action.href} className="rounded-lg border border-slate-200 p-4 transition hover:border-emerald-200 hover:bg-emerald-50/40">
+                  <p className="font-semibold text-slate-950">{action.title}</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">{action.detail}</p>
+                </Link>
+              ))}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm ring-1 ring-slate-100">
-            <h2 className="text-lg font-bold text-slate-900">System Status</h2>
-            <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-green-50/50 border border-green-100">
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-                  <span className="text-sm font-medium text-green-700">WhatsApp Bot Active</span>
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="font-bold text-slate-950">Directory setup</h2>
+            <div className="mt-5 space-y-4">
+              {['Create departments', 'Add sub departments', 'Assign doctors', 'Open appointment slots'].map((item, index) => (
+                <div key={item} className="flex gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">{index + 1}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{item}</p>
+                    <p className="text-xs text-slate-500">Keeps WhatsApp booking options accurate.</p>
+                  </div>
                 </div>
-                <span className="text-xs text-green-600 font-semibold">Live</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                  <span className="text-sm font-medium text-blue-700">Database Connected</span>
-                </div>
-                <span className="text-xs text-blue-600 font-semibold">Connected</span>
-              </div>
+              ))}
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </AdminLayout>
   );

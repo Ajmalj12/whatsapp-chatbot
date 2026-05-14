@@ -7,7 +7,7 @@ export async function GET() {
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
         const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-        const [totalDoctors, todayAppointments, activeSlots, totalPatients] = await Promise.all([
+        const [totalDoctors, todayAppointments, activeSlots, totalPatients, totalDepartments, totalSubDepartments] = await Promise.all([
             prisma.doctor.count({ where: { active: true } }),
             prisma.appointment.count({
                 where: {
@@ -23,6 +23,8 @@ export async function GET() {
                 },
             }),
             prisma.appointment.count(),
+            prisma.department.count({ where: { active: true } }),
+            prisma.subDepartment.count({ where: { active: true } }),
         ]);
 
         return NextResponse.json({
@@ -30,6 +32,8 @@ export async function GET() {
             todayAppointments,
             activeSlots,
             totalPatients,
+            totalDepartments,
+            totalSubDepartments,
         });
     } catch (error) {
         console.error('[Stats API]', error);

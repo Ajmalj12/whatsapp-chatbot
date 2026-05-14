@@ -8,7 +8,13 @@ export async function GET(req: Request) {
 
         const departments = await prisma.department.findMany({
             where: includeInactive ? {} : { active: true },
-            orderBy: { displayOrder: 'asc' }
+            orderBy: { displayOrder: 'asc' },
+            include: {
+                subDepartments: {
+                    where: includeInactive ? {} : { active: true },
+                    orderBy: { displayOrder: 'asc' }
+                }
+            }
         });
         return NextResponse.json(departments);
     } catch (error) {
@@ -25,9 +31,13 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { name, description, icon, displayOrder } = body;
 
+        if (!name?.trim()) {
+            return NextResponse.json({ error: 'Department name is required' }, { status: 400 });
+        }
+
         const department = await prisma.department.create({
             data: {
-                name,
+                name: name.trim(),
                 description,
                 icon,
                 displayOrder: displayOrder || 0

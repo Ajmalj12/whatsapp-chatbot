@@ -8,7 +8,7 @@ interface Appointment {
     patientName: string;
     patientAge: string;
     patientPhone: string;
-    doctor: { name: string; department: string };
+    doctor: { name: string; department: string; subDepartment?: string | null };
     availability: { startTime: string; endTime: string };
     status: string;
     createdAt: string;
@@ -68,7 +68,9 @@ export default function AppointmentsPage() {
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-medium text-slate-900">{apt.doctor.name}</span>
-                                                <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-tight">{apt.doctor.department}</span>
+                                                <span className="text-[10px] uppercase font-bold text-emerald-600 tracking-tight">
+                                                    {apt.doctor.department}{apt.doctor.subDepartment ? ` / ${apt.doctor.subDepartment}` : ''}
+                                                </span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">

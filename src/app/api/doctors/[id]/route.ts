@@ -8,11 +8,18 @@ export async function PATCH(
     try {
         const { id } = await params;
         const body = await req.json();
-        const { active } = body;
+        const { active, name, department, subDepartment, specialization, consultationHours } = body;
 
         const doctor = await prisma.doctor.update({
             where: { id },
-            data: { active },
+            data: {
+                ...(active !== undefined && { active }),
+                ...(name !== undefined && { name: name.trim() }),
+                ...(department !== undefined && { department: department.trim() }),
+                ...(subDepartment !== undefined && { subDepartment: subDepartment?.trim() || null }),
+                ...(specialization !== undefined && { specialization: specialization?.trim() || null }),
+                ...(consultationHours !== undefined && { consultationHours: consultationHours?.trim() || null })
+            },
         });
 
         return NextResponse.json(doctor);

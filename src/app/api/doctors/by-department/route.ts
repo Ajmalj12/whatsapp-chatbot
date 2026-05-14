@@ -13,13 +13,23 @@ export async function GET(req: Request) {
             }, { status: 400 });
         }
 
-        // Fetch doctors in the department
+        // Fetch doctors in the department or one of its sub departments.
         const doctors = await prisma.doctor.findMany({
             where: {
-                department: {
-                    contains: department,
-                    mode: 'insensitive'
-                },
+                OR: [
+                    {
+                        department: {
+                            contains: department,
+                            mode: 'insensitive'
+                        }
+                    },
+                    {
+                        subDepartment: {
+                            contains: department,
+                            mode: 'insensitive'
+                        }
+                    }
+                ],
                 active: true
             },
             include: {
@@ -42,6 +52,7 @@ export async function GET(req: Request) {
                     id: doctor.id,
                     name: doctor.name,
                     department: doctor.department,
+                    subDepartment: doctor.subDepartment,
                     specialization: doctor.specialization,
                     consultationHours: doctor.consultationHours,
                     nextAvailableSlot: nextSlot

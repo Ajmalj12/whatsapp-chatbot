@@ -1,31 +1,82 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
+
+interface SubDepartment {
+    id: string;
+    name: string;
+    active: boolean;
+}
+
+interface Department {
+    id: string;
+    name: string;
+    active: boolean;
+    subDepartments: SubDepartment[];
+}
 
 interface Doctor {
     id: string;
     name: string;
     department: string;
+    subDepartment?: string | null;
+    specialization?: string | null;
+    consultationHours?: string | null;
     active: boolean;
 }
 
+const emptyDoctorForm = {
+    name: '',
+    department: '',
+    subDepartment: '',
+    specialization: '',
+    consultationHours: ''
+};
+
 export default function DoctorsPage() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [seeding, setSeeding] = useState(false);
-    const [newDoctor, setNewDoctor] = useState({ name: '', department: '' });
+    const [saving, setSaving] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [doctorForm, setDoctorForm] = useState(emptyDoctorForm);
 
     useEffect(() => {
-        fetchDoctors();
+        fetchData();
     }, []);
 
-    const fetchDoctors = async () => {
+    const activeDepartments = useMemo(() => departments.filter((department) => department.active), [departments]);
+    const selectedDepartment = useMemo(
+        () => activeDepartments.find((department) => department.name === doctorForm.department),
+        [activeDepartments, doctorForm.department]
+    );
+    const availableSubDepartments = selectedDepartment?.subDepartments.filter((sub) => sub.active) || [];
+
+    const groupedDoctors = useMemo(() => {
+        return doctors.reduce<Record<string, Doctor[]>>((groups, doctor) => {
+            const key = doctor.subDepartment ? `${doctor.department} / ${doctor.subDepartment}` : doctor.department || 'Unassigned';
+            groups[key] = groups[key] || [];
+            groups[key].push(doctor);
+            return groups;
+        }, {});
+    }, [doctors]);
+
+    const fetchData = async () => {
+        setLoading(true);
         try {
-            const res = await fetch('/api/doctors');
-            const data = await res.json();
-            setDoctors(Array.isArray(data) ? data : []);
+            const [doctorRes, departmentRes] = await Promise.all([
+                fetch('/api/doctors'),
+                fetch('/api/departments?includeInactive=true')
+            ]);
+            const [doctorData, departmentData] = await Promise.all([
+                doctorRes.json(),
+                departmentRes.json()
+            ]);
+            setDoctors(Array.isArray(doctorData) ? doctorData : []);
+            setDepartments(Array.isArray(departmentData) ? departmentData : []);
         } catch (error) {
             console.error('Error fetching doctors:', error);
         } finally {
@@ -33,33 +84,55 @@ export default function DoctorsPage() {
         }
     };
 
-    const handleAddDoctor = async (e: React.FormEvent) => {
+    const openCreateModal = () => {
+        setEditingId(null);
+        setDoctorForm(emptyDoctorForm);
+        setIsModalOpen(true);
+    };
+
+    const openEditModal = (doctor: Doctor) => {
+        setEditingId(doctor.id);
+        setDoctorForm({
+            name: doctor.name,
+            department: doctor.department,
+            subDepartment: doctor.subDepartment || '',
+            specialization: doctor.specialization || '',
+            consultationHours: doctor.consultationHours || ''
+        });
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setEditingId(null);
+        setDoctorForm(emptyDoctorForm);
+    };
+
+    const handleSaveDoctor = async (e: React.FormEvent) => {
         e.preventDefault();
+        setSaving(true);
         try {
-            const res = await fetch('/api/doctors', {
-                method: 'POST',
+            const res = await fetch(editingId ? `/api/doctors/${editingId}` : '/api/doctors', {
+                method: editingId ? 'PATCH' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newDoctor),
+                body: JSON.stringify(doctorForm),
             });
             if (res.ok) {
-                setNewDoctor({ name: '', department: '' });
-                setIsModalOpen(false);
-                fetchDoctors();
+                closeModal();
+                fetchData();
             }
         } catch (error) {
-            console.error('Error adding doctor:', error);
+            console.error('Error saving doctor:', error);
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this doctor? All related appointments and slots will also be removed.')) return;
+        if (!confirm('Delete this doctor and related appointments and slots?')) return;
         try {
-            const res = await fetch(`/api/doctors/${id}`, {
-                method: 'DELETE',
-            });
-            if (res.ok) {
-                fetchDoctors();
-            }
+            const res = await fetch(`/api/doctors/${id}`, { method: 'DELETE' });
+            if (res.ok) fetchData();
         } catch (error) {
             console.error('Error deleting doctor:', error);
         }
@@ -72,35 +145,29 @@ export default function DoctorsPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ active: !currentStatus }),
             });
-            if (res.ok) {
-                fetchDoctors();
-            }
+            if (res.ok) fetchData();
         } catch (error) {
             console.error('Error toggling status:', error);
         }
     };
 
     const handleSeedDoctors = async () => {
-        if (!confirm('This will create 16 demo doctors across all departments. Make sure you have seeded departments first. Continue?')) {
-            return;
-        }
+        if (!confirm('Create demo doctors across departments and sub departments?')) return;
 
         setSeeding(true);
         try {
-            const res = await fetch('/api/doctors/seed', {
-                method: 'POST',
-            });
+            const res = await fetch('/api/doctors/seed', { method: 'POST' });
             const data = await res.json();
 
             if (res.ok) {
-                alert(`✅ Success! Created ${data.doctorsCreated} demo doctors.`);
-                fetchDoctors();
+                alert(`Created ${data.doctorsCreated} demo doctors.`);
+                fetchData();
             } else {
-                alert(`❌ Error: ${data.error || 'Failed to seed doctors'}`);
+                alert(data.error || 'Failed to seed doctors');
             }
         } catch (error) {
             console.error('Error seeding doctors:', error);
-            alert('❌ Failed to seed doctors');
+            alert('Failed to seed doctors');
         } finally {
             setSeeding(false);
         }
@@ -109,133 +176,193 @@ export default function DoctorsPage() {
     return (
         <AdminLayout>
             <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Doctors</h1>
-                        <p className="text-sm text-slate-500">Manage your hospital's medical staff</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Provider directory</p>
+                        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Doctors</h1>
+                        <p className="mt-2 text-sm text-slate-600">Assign every doctor to a department and optional sub department for cleaner booking flows.</p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                         <button
                             onClick={handleSeedDoctors}
                             disabled={seeding}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
                         >
-                            <span>🌱</span> {seeding ? 'Seeding...' : 'Seed Doctors'}
+                            {seeding ? 'Seeding...' : 'Seed doctors'}
                         </button>
                         <button
-                            onClick={() => setIsModalOpen(true)}
-                            className="btn-primary flex items-center gap-2"
+                            onClick={openCreateModal}
+                            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800"
                         >
-                            <span>➕</span> Add New Doctor
+                            Add doctor
                         </button>
+                    </div>
+                </header>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase text-slate-500">Doctors</p>
+                        <p className="mt-2 text-2xl font-bold text-slate-950">{doctors.length}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase text-slate-500">Active</p>
+                        <p className="mt-2 text-2xl font-bold text-slate-950">{doctors.filter((doctor) => doctor.active).length}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-white p-4">
+                        <p className="text-xs font-semibold uppercase text-slate-500">With sub department</p>
+                        <p className="mt-2 text-2xl font-bold text-slate-950">{doctors.filter((doctor) => doctor.subDepartment).length}</p>
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="border-b border-slate-100 bg-slate-50/50">
-                                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Doctor Name</th>
-                                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Department</th>
-                                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">Loading doctors...</td>
-                                </tr>
-                            ) : doctors.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">No doctors found. Add your first doctor to get started!</td>
-                                </tr>
-                            ) : (
-                                doctors.map((doctor) => (
-                                    <tr key={doctor.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs uppercase">
-                                                    {doctor.name.substring(0, 2)}
-                                                </div>
-                                                <span className="font-medium text-slate-900">{doctor.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                                                {doctor.department}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <button
-                                                onClick={() => handleToggleActive(doctor.id, doctor.active)}
-                                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${doctor.active ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
-                                            >
-                                                <span className={`h-1.5 w-1.5 rounded-full ${doctor.active ? 'bg-green-600' : 'bg-red-600'}`}></span>
-                                                {doctor.active ? 'Active' : 'Inactive'}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <button className="text-slate-400 hover:text-emerald-600 transition-colors mr-4 font-medium text-sm">Edit</button>
-                                            <button
-                                                onClick={() => handleDelete(doctor.id)}
-                                                className="text-slate-400 hover:text-red-500 transition-colors font-medium text-sm"
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h2 className="font-bold text-slate-950">Doctor roster</h2>
+                        <p className="text-sm text-slate-500">Grouped by department and sub department.</p>
+                    </div>
+
+                    {loading ? (
+                        <p className="p-8 text-center text-sm text-slate-500">Loading doctors...</p>
+                    ) : doctors.length === 0 ? (
+                        <p className="p-8 text-center text-sm text-slate-500">No doctors found. Add the first doctor to get started.</p>
+                    ) : (
+                        <div className="divide-y divide-slate-100">
+                            {Object.entries(groupedDoctors).map(([groupName, groupDoctors]) => (
+                                <section key={groupName} className="p-5">
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600">{groupName}</h3>
+                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{groupDoctors.length}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full min-w-[720px] text-left">
+                                            <thead>
+                                                <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                    <th className="px-3 py-2">Doctor</th>
+                                                    <th className="px-3 py-2">Specialization</th>
+                                                    <th className="px-3 py-2">Hours</th>
+                                                    <th className="px-3 py-2">Status</th>
+                                                    <th className="px-3 py-2 text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {groupDoctors.map((doctor) => (
+                                                    <tr key={doctor.id} className="hover:bg-slate-50">
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-xs font-bold uppercase text-emerald-800">
+                                                                    {doctor.name.slice(0, 2)}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-semibold text-slate-950">{doctor.name}</p>
+                                                                    <p className="text-xs text-slate-500">{doctor.department}{doctor.subDepartment ? ` / ${doctor.subDepartment}` : ''}</p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-sm text-slate-600">{doctor.specialization || 'Not set'}</td>
+                                                        <td className="px-3 py-3 text-sm text-slate-600">{doctor.consultationHours || 'Not set'}</td>
+                                                        <td className="px-3 py-3">
+                                                            <button
+                                                                onClick={() => handleToggleActive(doctor.id, doctor.active)}
+                                                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${doctor.active ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+                                                            >
+                                                                {doctor.active ? 'Active' : 'Inactive'}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right">
+                                                            <button onClick={() => openEditModal(doctor)} className="mr-4 text-sm font-semibold text-slate-600 hover:text-slate-950">Edit</button>
+                                                            <button onClick={() => handleDelete(doctor.id)} className="text-sm font-semibold text-red-600 hover:text-red-700">Delete</button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
             {isModalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl ring-1 ring-slate-200 animate-in fade-in zoom-in duration-200">
-                        <h2 className="text-xl font-bold text-slate-900">Add New Doctor</h2>
-                        <form onSubmit={handleAddDoctor} className="mt-6 space-y-4">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-xl rounded-lg bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+                        <div className="flex items-start justify-between gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700">Full Name</label>
+                                <h2 className="text-xl font-bold text-slate-950">{editingId ? 'Edit doctor' : 'Add doctor'}</h2>
+                                <p className="mt-1 text-sm text-slate-500">Sub department is optional, but recommended when the department has service lines.</p>
+                            </div>
+                            <button onClick={closeModal} className="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900">Close</button>
+                        </div>
+                        <form onSubmit={handleSaveDoctor} className="mt-6 space-y-4">
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700">Full name</label>
                                 <input
                                     type="text"
                                     required
-                                    placeholder="e.g. Dr. Anil Kumar"
-                                    className="mt-1 block w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                                    value={newDoctor.name}
-                                    onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
+                                    placeholder="Dr. Anil Kumar"
+                                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                                    value={doctorForm.name}
+                                    onChange={(e) => setDoctorForm({ ...doctorForm, name: e.target.value })}
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700">Department</label>
-                                <select
-                                    required
-                                    className="mt-1 block w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all"
-                                    value={newDoctor.department}
-                                    onChange={(e) => setNewDoctor({ ...newDoctor, department: e.target.value })}
-                                >
-                                    <option value="">Select Department</option>
-                                    <option value="Cardiology">Cardiology</option>
-                                    <option value="General Medicine">General Medicine</option>
-                                    <option value="Orthopedics">Orthopedics</option>
-                                    <option value="Pediatrics">Pediatrics</option>
-                                </select>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-700">Department</label>
+                                    <select
+                                        required
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                                        value={doctorForm.department}
+                                        onChange={(e) => setDoctorForm({ ...doctorForm, department: e.target.value, subDepartment: '' })}
+                                    >
+                                        <option value="">Select department</option>
+                                        {activeDepartments.map((department) => (
+                                            <option key={department.id} value={department.name}>{department.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-700">Sub department</label>
+                                    <select
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:bg-slate-50 disabled:text-slate-400"
+                                        value={doctorForm.subDepartment}
+                                        disabled={!doctorForm.department || availableSubDepartments.length === 0}
+                                        onChange={(e) => setDoctorForm({ ...doctorForm, subDepartment: e.target.value })}
+                                    >
+                                        <option value="">No sub department</option>
+                                        {availableSubDepartments.map((sub) => (
+                                            <option key={sub.id} value={sub.name}>{sub.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
-                            <div className="mt-8 flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-all"
-                                >
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-700">Specialization</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Interventional Cardiology"
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                                        value={doctorForm.specialization}
+                                        onChange={(e) => setDoctorForm({ ...doctorForm, specialization: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-semibold text-slate-700">Consultation hours</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Mon-Fri: 9 AM - 5 PM"
+                                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                                        value={doctorForm.consultationHours}
+                                        onChange={(e) => setDoctorForm({ ...doctorForm, consultationHours: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={closeModal} className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                                     Cancel
                                 </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all"
-                                >
-                                    Save Doctor
+                                <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-emerald-700 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
+                                    {saving ? 'Saving...' : editingId ? 'Save changes' : 'Save doctor'}
                                 </button>
                             </div>
                         </form>

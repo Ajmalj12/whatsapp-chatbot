@@ -7,6 +7,11 @@ export async function GET() {
             include: {
                 availability: true,
             },
+            orderBy: [
+                { department: 'asc' },
+                { subDepartment: 'asc' },
+                { name: 'asc' }
+            ]
         });
         return NextResponse.json(doctors);
     } catch (error) {
@@ -21,9 +26,20 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { name, department } = body;
+        const { name, department, subDepartment, specialization, consultationHours } = body;
+
+        if (!name?.trim() || !department?.trim()) {
+            return NextResponse.json({ error: 'Doctor name and department are required' }, { status: 400 });
+        }
+
         const doctor = await prisma.doctor.create({
-            data: { name, department },
+            data: {
+                name: name.trim(),
+                department: department.trim(),
+                subDepartment: subDepartment?.trim() || null,
+                specialization: specialization?.trim() || null,
+                consultationHours: consultationHours?.trim() || null
+            },
         });
         return NextResponse.json(doctor);
     } catch (error) {

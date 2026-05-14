@@ -1,98 +1,96 @@
- 'use client';
+'use client';
 
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
+const navItems = [
+    { href: '/', label: 'Dashboard', icon: 'DB' },
+    { href: '/doctors', label: 'Doctors', icon: 'DR' },
+    { href: '/departments', label: 'Departments', icon: 'DP' },
+    { href: '/availability', label: 'Availability', icon: 'AV' },
+    { href: '/appointments', label: 'Appointments', icon: 'AP' },
+    { href: '/tickets', label: 'Tickets', icon: 'TK' },
+    { href: '/reports', label: 'Reports', icon: 'RP' },
+    { href: '/knowledge', label: 'Knowledge Base', icon: 'KB' },
+];
+
 export default function Layout({ children, fullWidth = false }: { children: React.ReactNode; fullWidth?: boolean }) {
     const pathname = usePathname();
-    const navItems = [
-        { href: '/', label: 'Dashboard' },
-        { href: '/doctors', label: 'Doctors' },
-        { href: '/departments', label: 'Departments' },
-        { href: '/availability', label: 'Availability' },
-        { href: '/appointments', label: 'Appointments' },
-        { href: '/tickets', label: 'Tickets' },
-        { href: '/reports', label: 'Reports' },
-        { href: '/knowledge', label: 'Knowledge Base', icon: '🧠' },
-    ];
-
-    const isActive = (href: string) => {
-        if (href === '/') return pathname === '/';
-        return pathname.startsWith(href);
-    };
+    const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href);
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-white font-sans text-slate-900">
-            <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-200">
-                                <span className="text-xl font-bold">+</span>
+        <div className="min-h-screen bg-slate-100 font-sans text-slate-950">
+            <div className="flex min-h-screen">
+                <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
+                    <div className="border-b border-slate-200 px-6 py-5">
+                        <Link href="/" className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-700 text-lg font-bold text-white">+</div>
+                            <div>
+                                <p className="text-base font-bold tracking-tight text-slate-950">CarePlus Clinic</p>
+                                <p className="text-xs font-medium text-slate-500">WhatsApp care portal</p>
                             </div>
-                            <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
-                                CarePlus <span className="text-emerald-600">Clinic</span>
-                            </span>
-                            <span className="hidden text-xs text-slate-500 lg:inline">Demo clinic management</span>
-                        </div>
-                        <div className="hidden xl:block">
-                            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-                                {navItems.map((item) => (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
-                                            isActive(item.href)
-                                                ? 'bg-emerald-50 text-emerald-700'
-                                                : 'text-slate-600 hover:bg-slate-50 hover:text-emerald-600'
-                                        }`}
-                                    >
-                                        <span className="inline-flex items-center gap-1.5">
-                                            {item.icon ? <span className="text-base leading-none">{item.icon}</span> : null}
-                                            <span>{item.label}</span>
-                                        </span>
-                                    </Link>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="hidden sm:flex flex-col items-end">
-                                <span className="text-xs font-semibold text-slate-900">Admin User</span>
-                                <span className="text-[10px] text-slate-500">Super Admin</span>
-                            </div>
-                            <div className="h-9 w-9 rounded-full bg-slate-200 border-2 border-white shadow-sm ring-1 ring-slate-100 uppercase flex items-center justify-center text-xs font-bold text-slate-600">
-                                AD
-                            </div>
+                        </Link>
+                    </div>
+
+                    <nav className="flex-1 space-y-1 px-3 py-4">
+                        {navItems.map((item) => (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                                    isActive(item.href)
+                                        ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100'
+                                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                                }`}
+                            >
+                                <span className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-bold ${
+                                    isActive(item.href) ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500'
+                                }`}>
+                                    {item.icon}
+                                </span>
+                                {item.label}
+                            </Link>
+                        ))}
+                    </nav>
+
+                    <div className="border-t border-slate-200 p-4">
+                        <div className="rounded-lg bg-slate-950 p-4 text-white">
+                            <p className="text-sm font-bold">Admin User</p>
+                            <p className="mt-1 text-xs text-slate-300">Directory, bookings, support</p>
                         </div>
                     </div>
-                </div>
-                <div className="xl:hidden border-t border-slate-200/70 bg-white/95">
-                    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                        <div className="flex gap-2 overflow-x-auto py-2">
+                </aside>
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur lg:hidden">
+                        <div className="flex h-16 items-center justify-between px-4">
+                            <Link href="/" className="flex items-center gap-2">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700 font-bold text-white">+</div>
+                                <span className="font-bold text-slate-950">CarePlus</span>
+                            </Link>
+                            <div className="h-9 w-9 rounded-full bg-slate-200 text-xs font-bold text-slate-600 flex items-center justify-center">AD</div>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto border-t border-slate-200 px-4 py-2">
                             {navItems.map((item) => (
                                 <Link
                                     key={item.href}
                                     href={item.href}
-                                    className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                                        isActive(item.href)
-                                            ? 'bg-emerald-50 text-emerald-700'
-                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                                        isActive(item.href) ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'
                                     }`}
                                 >
-                                    <span className="inline-flex items-center gap-1.5">
-                                        {item.icon ? <span>{item.icon}</span> : null}
-                                        <span>{item.label}</span>
-                                    </span>
+                                    {item.label}
                                 </Link>
                             ))}
                         </div>
-                    </div>
+                    </header>
+
+                    <main className={fullWidth ? 'w-full' : 'mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8'}>
+                        {children}
+                    </main>
                 </div>
-            </nav>
-            <main className={fullWidth ? 'w-full' : 'mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8'}>
-                {children}
-            </main>
+            </div>
         </div>
     );
 }

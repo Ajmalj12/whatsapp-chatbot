@@ -902,14 +902,38 @@ export async function POST(req: Request) {
                     if (mentionedDoctor) {
                         return await handleDoctorSelection(from, text, `doc_${mentionedDoctor.id}`, mentionedDoctor, currentData);
                     }
-                    const allDepartments = await prisma.department.findMany({ where: { active: true } });
+                    const allDepartments = await prisma.department.findMany({
+                        where: { active: true },
+                        include: { subDepartments: { where: { active: true } } }
+                    });
                     let mentionedDept = allDepartments.find(d => new RegExp(`\\b${d.name.toLowerCase()}\\b`).test(cleanText));
+                    let mentionedSubDept = "";
                     if (!mentionedDept) {
                         if (/\bgeneral\b/i.test(cleanText)) mentionedDept = allDepartments.find(d => d.name.toLowerCase().includes('general'));
                         if (!mentionedDept && /\bskin\b/i.test(cleanText)) mentionedDept = allDepartments.find(d => d.name.toLowerCase().includes('dermatology') || d.name.toLowerCase().includes('skin'));
                     }
+                    if (!mentionedDept) {
+                        for (const dept of allDepartments) {
+                            const subDept = dept.subDepartments.find(s => {
+                                const subName = s.name.toLowerCase();
+                                return subName.includes(cleanText) || cleanText.includes(subName) || subName.split(/\s+/).some(part => part.length > 4 && new RegExp(`\\b${part}\\b`, 'i').test(cleanText));
+                            });
+                            if (subDept) {
+                                mentionedDept = dept;
+                                mentionedSubDept = subDept.name;
+                                break;
+                            }
+                        }
+                    }
                     if (mentionedDept) {
-                        const doctorsInDept = await prisma.doctor.findMany({ where: { department: mentionedDept.name, active: true } });
+                        const doctorsInDept = await prisma.doctor.findMany({
+                            where: {
+                                department: mentionedDept.name,
+                                ...(mentionedSubDept && { subDepartment: mentionedSubDept }),
+                                active: true
+                            }
+                        });
+                        const selectedDeptLabel = mentionedSubDept ? `${mentionedDept.name} / ${mentionedSubDept}` : mentionedDept.name;
                         if (doctorsInDept.length === 1) {
                             const doc = doctorsInDept[0];
                             const isSkinOrDerma = /skin|dermatology/i.test(mentionedDept.name);
@@ -925,6 +949,7 @@ export async function POST(req: Request) {
                                             doctorId: doc.id,
                                             doctorName: doc.name,
                                             selectedDepartment: mentionedDept.name,
+                                            selectedSubDepartment: mentionedSubDept || undefined,
                                             selectedDate: tomorrow.toISOString(),
                                         }),
                                     },
@@ -939,6 +964,7 @@ export async function POST(req: Request) {
                                             doctorId: doc.id,
                                             doctorName: doc.name,
                                             selectedDepartment: mentionedDept.name,
+                                            selectedSubDepartment: mentionedSubDept || undefined,
                                             selectedDate: new Date().toISOString(),
                                         }),
                                     },
@@ -950,12 +976,12 @@ export async function POST(req: Request) {
                                 where: { phone: from },
                                 data: {
                                     currentStep: 'DOCTOR_SELECTION',
-                                    data: JSON.stringify({ ...currentData, selectedDepartment: mentionedDept.name }),
+                                    data: JSON.stringify({ ...currentData, selectedDepartment: mentionedDept.name, selectedSubDepartment: mentionedSubDept || undefined }),
                                 },
                             });
                             await sendWhatsAppList(from, `Available doctors in ${mentionedDept.name} 👇`, "Select Doctor", [{
-                                title: mentionedDept.name,
-                                rows: doctorsInDept.slice(0, 10).map((d: any) => ({ id: `doc_${d.id}`, title: d.name, description: d.specialization || d.department }))
+                                title: selectedDeptLabel.slice(0, 24),
+                                rows: doctorsInDept.slice(0, 10).map((d: any) => ({ id: `doc_${d.id}`, title: d.name, description: d.specialization || d.subDepartment || d.department }))
                             }]);
                         }
                         break;
@@ -1267,6 +1293,7 @@ export async function POST(req: Request) {
                 }
 
                 let selectedDeptName = "";
+                let selectedSubDeptName = "";
 
                 if (interactiveId.startsWith('dept_')) {
                     const deptId = interactiveId.replace('dept_', '');
@@ -1274,7 +1301,10 @@ export async function POST(req: Request) {
                     if (dept) selectedDeptName = dept.name;
                 } else {
                     // Fuzzy match logic for text input
-                    const allDepartments = await prisma.department.findMany({ where: { active: true } });
+                    const allDepartments = await prisma.department.findMany({
+                        where: { active: true },
+                        include: { subDepartments: { where: { active: true } } }
+                    });
 
                     // 1. Direct match (case-insensitive)
                     let matchedDept = allDepartments.find(d => d.name.toLowerCase() === text.toLowerCase());
@@ -1300,6 +1330,19 @@ export async function POST(req: Request) {
 
                     if (matchedDept) {
                         selectedDeptName = matchedDept.name;
+                    } else {
+                        for (const dept of allDepartments) {
+                            const input = text.toLowerCase();
+                            const matchedSubDept = dept.subDepartments.find(s => {
+                                const subName = s.name.toLowerCase();
+                                return subName === input || subName.includes(input) || input.includes(subName) || subName.split(/\s+/).some(part => part.length > 4 && input.includes(part));
+                            });
+                            if (matchedSubDept) {
+                                selectedDeptName = dept.name;
+                                selectedSubDeptName = matchedSubDept.name;
+                                break;
+                            }
+                        }
                     }
                 }
 
@@ -1327,8 +1370,13 @@ export async function POST(req: Request) {
                 }
 
                 const doctorsInDept = await prisma.doctor.findMany({
-                    where: { department: selectedDeptName, active: true }
+                    where: {
+                        department: selectedDeptName,
+                        ...(selectedSubDeptName && { subDepartment: selectedSubDeptName }),
+                        active: true
+                    }
                 });
+                const selectedDeptLabel = selectedSubDeptName ? `${selectedDeptName} / ${selectedSubDeptName}` : selectedDeptName;
 
                 if (doctorsInDept.length === 0) {
                     await sendWhatsAppMessage(from, `Sorry, no doctors are currently available in ${selectedDeptName}. Please try another department.`);
@@ -1364,6 +1412,7 @@ export async function POST(req: Request) {
                                     doctorId: doc.id,
                                     doctorName: doc.name,
                                     selectedDepartment: selectedDeptName,
+                                    selectedSubDepartment: selectedSubDeptName || undefined,
                                     selectedDate: tomorrow.toISOString(),
                                 }),
                             },
@@ -1378,6 +1427,7 @@ export async function POST(req: Request) {
                                     doctorId: doc.id,
                                     doctorName: doc.name,
                                     selectedDepartment: selectedDeptName,
+                                    selectedSubDepartment: selectedSubDeptName || undefined,
                                     selectedDate: new Date().toISOString(),
                                 }),
                             },
@@ -1389,7 +1439,7 @@ export async function POST(req: Request) {
                         where: { phone: from },
                         data: {
                             currentStep: 'DOCTOR_SELECTION',
-                            data: JSON.stringify({ ...currentData, selectedDepartment: selectedDeptName })
+                            data: JSON.stringify({ ...currentData, selectedDepartment: selectedDeptName, selectedSubDepartment: selectedSubDeptName || undefined })
                         },
                     });
                     await sendWhatsAppList(
@@ -1397,11 +1447,11 @@ export async function POST(req: Request) {
                         `Available doctors in ${selectedDeptName} 👇`,
                         "Select Doctor",
                         [{
-                            title: selectedDeptName,
+                        title: selectedDeptLabel.slice(0, 24),
                             rows: doctorsInDept.slice(0, 10).map((d: any) => ({
                                 id: `doc_${d.id}`,
                                 title: d.name,
-                                description: d.specialization || d.department
+                                description: d.specialization || d.subDepartment || d.department
                             }))
                         }]
                     );

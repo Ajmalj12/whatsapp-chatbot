@@ -14,13 +14,22 @@ async function getDynamicContext(): Promise<string[]> {
         // 1. Department information
         const departments = await prisma.department.findMany({
             where: { active: true },
-            orderBy: { displayOrder: 'asc' }
+            orderBy: { displayOrder: 'asc' },
+            include: {
+                subDepartments: {
+                    where: { active: true },
+                    orderBy: { displayOrder: 'asc' }
+                }
+            }
         });
 
         if (departments.length > 0) {
-            const deptList = departments.map(d =>
-                `- ${d.name}${d.description ? ': ' + d.description : ''}`
-            ).join('\n');
+            const deptList = departments.map(d => {
+                const subDepartments = d.subDepartments.length > 0
+                    ? `\n  Sub departments: ${d.subDepartments.map((sub) => sub.name).join(', ')}`
+                    : '';
+                return `- ${d.name}${d.description ? ': ' + d.description : ''}${subDepartments}`;
+            }).join('\n');
             contexts.push(`Available Departments:\n${deptList}`);
         }
 
@@ -66,7 +75,8 @@ async function getDynamicContext(): Promise<string[]> {
                     .map(([date, times]) => `${date} [${times.join(', ')}]`)
                     .join('; ');
 
-                deptInfo += `- Dr. ${doc.name}: ${formattedSlots ? formattedSlots : 'No upcoming slots'}\n`;
+                const serviceLine = doc.subDepartment ? ` (${doc.subDepartment})` : '';
+                deptInfo += `- ${doc.name}${serviceLine}: ${formattedSlots ? formattedSlots : 'No upcoming slots'}\n`;
             });
 
             doctorAvailabilityLines.push(deptInfo);
@@ -158,4 +168,3 @@ ${context}
         return "I'm having trouble connecting to my AI service right now.";
     }
 }
-

@@ -13,11 +13,16 @@ export async function PATCH(
         const department = await prisma.department.update({
             where: { id },
             data: {
-                ...(name !== undefined && { name }),
+                ...(name !== undefined && { name: name.trim() }),
                 ...(description !== undefined && { description }),
                 ...(icon !== undefined && { icon }),
                 ...(displayOrder !== undefined && { displayOrder }),
                 ...(active !== undefined && { active })
+            },
+            include: {
+                subDepartments: {
+                    orderBy: { displayOrder: 'asc' }
+                }
             }
         });
 
@@ -37,6 +42,10 @@ export async function DELETE(
 ) {
     try {
         const { id } = await params;
+        await prisma.subDepartment.deleteMany({
+            where: { departmentId: id }
+        });
+
         await prisma.department.delete({
             where: { id }
         });

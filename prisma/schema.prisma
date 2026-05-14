@@ -11,6 +11,7 @@ model Doctor {
   id                String         @id @default(auto()) @map("_id") @db.ObjectId
   name              String
   department        String
+  subDepartment     String?
   specialization    String?
   consultationHours String?
   active            Boolean        @default(true)
@@ -68,6 +69,21 @@ model Department {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  subDepartments SubDepartment[]
+}
+
+model SubDepartment {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  description  String?
+  displayOrder Int        @default(0)
+  active       Boolean    @default(true)
+  departmentId String     @db.ObjectId
+  department   Department @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([departmentId, name])
 }
 
 model SupportTicket {
